@@ -9,6 +9,7 @@ import {
   deleteComment,
   getProjectMeta,
   getReview,
+  getStorage,
   getVersion,
   listComments,
   listProjects,
@@ -16,7 +17,9 @@ import {
   listVersions,
   pruneResolvedReviews,
   resolveReview,
+  setStorage,
 } from "./store.js";
+import { getChannel, listChannelStatus } from "./channels/index.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = join(HERE, "ui");
@@ -115,6 +118,7 @@ async function handleApi(req, res, seg, url) {
 
   if (a === "health") return sendJSON(res, { ok: true });
   if (a === "version") return sendJSON(res, { version: pkg.version });
+  if (a === "channels" && !b) return sendJSON(res, listChannelStatus());
 
   if (a === "projects" && !b) return sendJSON(res, listProjects());
 
@@ -132,6 +136,11 @@ async function handleApi(req, res, seg, url) {
       from: { n: from, markdown: getVersion(b, from)?.markdown ?? "" },
       to: { n: to, markdown: getVersion(b, to)?.markdown ?? "" },
     });
+  }
+
+  // /api/projects/:key/storage  → current channel bindings
+  if (a === "projects" && b && c === "storage" && !d) {
+    return sendJSON(res, getStorage(b));
   }
 
   // /api/projects/:key/versions/:n ...
@@ -162,6 +171,10 @@ async function handleApi(req, res, seg, url) {
     if (e === "comments" && seg[5] && method === "DELETE") {
       return sendJSON(res, { ok: deleteComment(key, n, seg[5]) });
     }
+    // /api/projects/:key/versions/:n/save  (POST) → push this version to a storage channel
+    if (e === "save" && method === "POST") {
+      return await handleSave(req, res, key, n);
+    }
   }
 
   // /api/reviews ...
@@ -179,6 +192,47 @@ async function handleApi(req, res, seg, url) {
   }
 
   return sendJSON(res, { error: "unknown endpoint" }, 404);
+}
+
+/** POST /api/projects/:key/versions/:n/save — create or overwrite the channel's store. */
+async function handleSave(req, res, key, n) {
+  const body = JSON.parse((await readBody(req)) || "{}");
+  const channelId = body.channel || "gist";
+  const channel = getChannel(channelId);
+  if (!channel) return sendJSON(res, { error: `unknown channel: ${channelId}` }, 400);
+
+  const v = getVersion(key, n);
+  if (!v) return sendJSON(res, { error: "no such version" }, 404);
+
+  const ready = channel.available();
+  if (!ready.ready) {
+    return sendJSON(
+      res,
+      { error: ready.reason || "channel not ready", fixCommand: ready.fixCommand ?? null },
+      409,
+    );
+  }
+
+  const existing = getStorage(key)[channelId];
+  try {
+    const info = existing?.id
+      ? channel.update({
+          id: existing.id,
+          markdown: v.markdown,
+          description: body.description ?? existing.description ?? "",
+          filename: body.filename ?? existing.filename,
+          oldFilename: existing.filename,
+        })
+      : channel.create({
+          markdown: v.markdown,
+          description: body.description ?? "",
+          filename: body.filename,
+        });
+    const saved = setStorage(key, channelId, { ...info, savedVersion: n });
+    return sendJSON(res, { channel: channelId, savedVersion: n, ...saved });
+  } catch (e) {
+    return sendJSON(res, { error: String(e?.message || e), fixCommand: e?.fixCommand ?? null }, 502);
+  }
 }
 
 // run directly: `node src/server.js [port]` (or bun)

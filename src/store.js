@@ -42,6 +42,23 @@ export function getProjectMeta(key) {
   return existsSync(metaPath(key)) ? readJSON(metaPath(key), null) : null;
 }
 
+// ---------- storage-channel bindings ----------
+/** All channel bindings for a project, e.g. { gist: { id, htmlUrl, … } }. */
+export function getStorage(key) {
+  return getProjectMeta(key)?.storage ?? {};
+}
+
+/** Persist (or update) the binding for one channel on a project. */
+export function setStorage(key, channelId, info) {
+  const meta = getProjectMeta(key);
+  if (!meta) return null;
+  meta.storage ??= {};
+  meta.storage[channelId] = { ...meta.storage[channelId], ...info, savedAt: now() };
+  meta.updatedAt = now();
+  writeFileSync(metaPath(key), enc(meta));
+  return meta.storage[channelId];
+}
+
 /**
  * Record a freshly-presented plan. De-dupes by content hash: an identical
  * re-presentation reuses the existing version (and keeps its comments),
@@ -82,6 +99,8 @@ export function recordPlan(opts) {
       updatedAt: now(),
       currentVersion: version,
       latestHash: hash,
+      // carry forward storage-channel bindings — they outlive individual versions
+      storage: meta?.storage ?? {},
     };
   }
   writeFileSync(metaPath(key), enc(meta));

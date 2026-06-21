@@ -102,6 +102,27 @@ async function cmdServe(args) {
   console.log(`Open http://localhost:${port}  (Ctrl+C to stop)`);
 }
 
+async function cmdChannels() {
+  const { listChannelStatus } = await import("./channels/index.js");
+  const list = listChannelStatus();
+  if (!list.length) {
+    console.log("No storage channels registered.");
+    return;
+  }
+  console.log("Storage channels:\n");
+  for (const c of list) {
+    const mark = c.ready ? "✓" : "✗";
+    console.log(`  ${mark} ${c.label} (${c.id})`);
+    if (!c.ready) {
+      if (c.reason) console.log(`      ${c.reason}`);
+      if (c.fixCommand) console.log(`      fix: ${c.fixCommand}`);
+      else if (c.fixUrl) console.log(`      see: ${c.fixUrl}`);
+    } else if (c.scopes) {
+      console.log(`      gh scopes: ${c.scopes.join(", ")}`);
+    }
+  }
+}
+
 function cmdStop() {
   const info = readJSON(SERVER_FILE, null);
   if (!info?.pid) {
@@ -130,6 +151,7 @@ Usage:
                                   --runtime    → force a runtime
   claude-plan-review serve [port] Start the review server (default ${DEFAULT_PORT})
   claude-plan-review stop         Stop the running server
+  claude-plan-review channels     Show storage-channel readiness (e.g. gh / gist)
   claude-plan-review hook         (internal) the PreToolUse hook entry
 `);
 }
@@ -144,6 +166,9 @@ switch (sub) {
     break;
   case "stop":
     cmdStop();
+    break;
+  case "channels":
+    await cmdChannels();
     break;
   case "hook":
     await import("./hook.js");

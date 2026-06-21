@@ -173,6 +173,25 @@ textarea {
 .rejectModal textarea { width: 100%; min-height: 80px; }
 .rejectModal .row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
 
+/* save-to-channel control + modal */
+.saveActions { display: flex; align-items: center; gap: 8px; }
+.savedlink { font-size: 11px; color: var(--fg-muted); font-family: var(--mono); text-decoration: none; white-space: nowrap; }
+.savedlink:hover { color: var(--accent); text-decoration: underline; }
+
+.saveModal { position: fixed; inset: 0; background: #00000066; display: flex; align-items: center; justify-content: center; z-index: 50; }
+.saveModal .box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 480px; max-width: 92vw; }
+.saveModal h3 { margin-top: 0; }
+.saveModal .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--fg-muted); margin-bottom: 12px; }
+.saveModal .field input, .saveModal .field select { font-family: var(--sans); font-size: 13px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+.saveModal .hint { color: var(--fg-muted); font-size: 12px; margin: 4px 0 0; }
+.saveModal .row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.saveModal .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.saveModal .btn.primary:hover { filter: brightness(1.08); }
+.saveModal .btn:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+.channelStatus { font-size: 12px; padding: 8px 10px; border-radius: 6px; margin-bottom: 14px; white-space: pre-wrap; word-break: break-word; }
+.channelStatus.ok { background: var(--green-bg); color: var(--green); }
+.channelStatus.warn { background: #fff8c5; color: #7d4e00; font-family: var(--mono); }
+
 .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg);
   padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 60; box-shadow: 0 4px 16px #0004; }
 

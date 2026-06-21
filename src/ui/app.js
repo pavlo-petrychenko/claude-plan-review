@@ -6,7 +6,12 @@ const esc = (s) =>
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    const err = new Error(body.error || res.statusText);
+    err.fixCommand = body.fixCommand ?? null;
+    throw err;
+  }
   return res.status === 204 ? null : res.json();
 }
 
@@ -23,6 +28,8 @@ const state = {
   diffMode: "split",
   sel: { anchor: null, start: null, end: null }, // source line-range selection
   dragging: false,
+  storage: {}, // channel bindings for the current project, e.g. { gist: {...} }
+  channels: [], // channel readiness (loaded when the save modal opens)
 };
 
 function toast(msg) {
@@ -60,6 +67,7 @@ function showEmpty(msg) {
   $("panel-preview").classList.add("active");
   $("preview").innerHTML = `<div class="empty">${esc(msg)}</div>`;
   $("reviewActions").hidden = true;
+  $("saveActions").hidden = true;
 }
 
 async function loadProjects() {
@@ -80,6 +88,7 @@ async function selectProject(key, wantV) {
   $("projectSel").value = key;
   const { versions } = await api(`/api/projects/${encodeURIComponent(key)}`);
   state.versions = versions;
+  state.storage = await api(`/api/projects/${encodeURIComponent(key)}/storage`).catch(() => ({}));
   if (!versions.length) {
     showEmpty("This project has no plan versions yet.");
     return;
@@ -111,6 +120,7 @@ async function loadVersion(n) {
   renderSource();
   renderGeneral();
   updateCommentCount();
+  refreshSaveUI();
   await refreshReview();
   if (state.tab === "diff") loadDiff();
 }
@@ -358,6 +368,112 @@ async function resolve(decision) {
   toast(decision === "approve" ? "Plan approved — Claude will proceed." : "Sent back to Claude with your comments.");
 }
 
+// ---------- storage / save ----------
+function projectName() {
+  return state.projects?.find((p) => p.key === state.key)?.name || "plan";
+}
+
+function refreshSaveUI() {
+  const box = $("saveActions");
+  if (!state.version) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const g = state.storage?.gist;
+  const btn = $("saveBtn");
+  const link = $("savedLink");
+  if (g?.id) {
+    btn.textContent = state.version === g.savedVersion ? "Update gist" : `Save v${state.version} → gist`;
+    link.hidden = false;
+    link.href = g.htmlUrl;
+    link.textContent = `gist · holds v${g.savedVersion}`;
+  } else {
+    btn.textContent = "Save to gist";
+    link.hidden = true;
+  }
+}
+
+function renderChannelStatus(ch) {
+  const box = $("channelStatus");
+  const confirm = $("saveConfirm");
+  if (!ch) {
+    box.className = "channelStatus warn";
+    box.textContent = "Could not read channel status.";
+    confirm.disabled = true;
+    return;
+  }
+  if (ch.ready) {
+    box.className = "channelStatus ok";
+    box.textContent = "✓ GitHub CLI ready — gist scope present.";
+    confirm.disabled = false;
+  } else {
+    box.className = "channelStatus warn";
+    const cmd = ch.fixCommand ? ` Run:  ${ch.fixCommand}` : ch.fixUrl ? ` See ${ch.fixUrl}` : "";
+    box.textContent = `⚠ ${ch.reason || "Channel not ready."}${cmd}`;
+    confirm.disabled = true;
+  }
+}
+
+async function openSaveModal() {
+  const g = state.storage?.gist;
+  $("saveTitle").textContent = g?.id ? "Update gist" : "Save plan to a gist";
+  $("saveDesc").value = g?.description ?? `${projectName()} — plan`;
+  $("saveFilename").value = g?.filename ?? "plan.md";
+  $("saveHint").textContent = g?.id
+    ? `Overwrites your secret gist (currently holds v${g.savedVersion}) with v${state.version}. GitHub keeps the gist's revision history.`
+    : `Creates a secret (unlisted) gist with v${state.version}'s markdown. Only people with the link can see it.`;
+  $("saveModal").hidden = false;
+
+  const sel = $("saveChannel");
+  $("channelStatus").textContent = "Checking GitHub CLI…";
+  $("channelStatus").className = "channelStatus";
+  $("saveConfirm").disabled = true;
+  try {
+    state.channels = await api("/api/channels");
+  } catch {
+    state.channels = [];
+  }
+  sel.innerHTML = state.channels.map((c) => `<option value="${esc(c.id)}">${esc(c.label)}</option>`).join("");
+  const current = state.channels.find((c) => c.id === (sel.value || "gist")) || state.channels[0];
+  if (current) sel.value = current.id;
+  renderChannelStatus(current);
+}
+
+function closeSaveModal() {
+  $("saveModal").hidden = true;
+}
+
+async function doSave() {
+  const channel = $("saveChannel").value || "gist";
+  const description = $("saveDesc").value.trim();
+  const filename = $("saveFilename").value.trim() || "plan.md";
+  const btn = $("saveConfirm");
+  btn.disabled = true;
+  const prev = btn.textContent;
+  btn.textContent = "Saving…";
+  try {
+    const r = await api(
+      `/api/projects/${encodeURIComponent(state.key)}/versions/${state.version}/save`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel, description, filename }),
+      },
+    );
+    state.storage[channel] = r;
+    closeSaveModal();
+    refreshSaveUI();
+    toast(`Saved v${state.version} to ${channel}.`);
+  } catch (e) {
+    // surface the remediation command if the channel handed one back
+    renderChannelStatus({ ready: false, reason: e.message, fixCommand: e.fixCommand });
+  } finally {
+    btn.textContent = prev;
+    btn.disabled = false;
+  }
+}
+
 // ---------- polling (reflect external resolution) ----------
 function pollLoop() {
   setInterval(async () => {
@@ -468,6 +584,12 @@ function wireUI() {
     await addComment(null, null, $("generalInput").value);
     $("generalInput").value = "";
   };
+
+  $("saveBtn").onclick = () => openSaveModal();
+  $("saveCancel").onclick = () => closeSaveModal();
+  $("saveConfirm").onclick = () => doSave();
+  $("saveChannel").onchange = () =>
+    renderChannelStatus(state.channels.find((c) => c.id === $("saveChannel").value));
 
   $("approveBtn").onclick = () => resolve("approve");
   $("rejectBtn").onclick = () => ($("rejectModal").hidden = false);

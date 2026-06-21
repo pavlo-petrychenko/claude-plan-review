@@ -24,6 +24,9 @@ Git worktrees are scoped separately automatically.
 - 🔀 **Diff** current vs any previous version — **side-by-side or unified** (toggle)
 - ✅ **Approve / request-changes** straight from the UI, fed back to Claude
 - 🗂 Per-worktree scoping; per-project opt-in (only runs where you enable the hook)
+- 📤 **Save a plan to a storage channel** — push the plan markdown to a secret
+  **GitHub Gist** (one gist per project, overwritten on each save; GitHub keeps
+  the gist's revision history). More channels can be added later.
 - ⚡ Tiny, zero-framework UI; Bun server; one dependency (`marked`)
 
 ## Requirements
@@ -32,6 +35,9 @@ Git worktrees are scoped separately automatically.
   tool is plain ESM JavaScript and runs unchanged on both. `init` auto-detects which
   you have (preferring Bun) and writes the matching hook command; override with `--runtime`.
 - Claude Code ≥ 2.1 (verified against 2.1.185)
+- *(Optional, only for saving to a Gist)* the [GitHub CLI](https://cli.github.com)
+  `gh`, logged in (`gh auth login`) with the `gist` scope. The tool reuses your
+  existing `gh` session — it never asks for or stores a token of its own.
 
 ## Setup
 
@@ -88,6 +94,7 @@ Use `bun` or `node` interchangeably (or `bunx`/`npx claude-plan-review …` when
 | `… cli.js init [dir] [--local] [--published] [--runtime bun\|node]` | Wire the `ExitPlanMode` hook into a project |
 | `… cli.js serve [port]` | Start the review server manually (default `4607`) |
 | `… cli.js stop` | Stop the running server |
+| `… cli.js channels` | Show storage-channel readiness (is `gh` installed / authed / `gist`-scoped?) |
 
 The server auto-starts on the first plan and stays up, so you can browse history
 anytime at `http://localhost:4607`.
@@ -101,6 +108,28 @@ anytime at `http://localhost:4607`.
 | `PLAN_REVIEW_TIMEOUT` | `1800` | Seconds the hook blocks waiting for your decision before falling back to Claude's normal approval prompt |
 
 > The hook entry sets `timeout: 1800` so Claude Code waits while you review.
+
+## Storage channels (save a plan out of the local store)
+
+Each plan version lives only on your machine by default. A **storage channel**
+lets you push the plan markdown somewhere shareable. Today there's one channel —
+**GitHub Gist** — and the registry is built so more can be added later.
+
+Click **Save to gist** in the header. The first save asks for a description and
+file name and creates a **secret** (unlisted) gist from the version you're
+viewing. There's **one gist per project**: saving any later version overwrites
+that same gist (GitHub keeps the gist's own revision history), and you can rename
+the description/file name on any save. The header then shows a link to the gist
+and which version it currently holds.
+
+Auth is delegated entirely to the GitHub CLI — if you've run `gh auth login`,
+nothing else is needed and **no token is ever stored by this tool**. If `gh`
+isn't installed, isn't logged in, or its token lacks the `gist` scope, the save
+dialog tells you the exact command to fix it (e.g. `gh auth refresh -s gist`).
+Run `claude-plan-review channels` to check readiness from the terminal.
+
+> Note: the Gist API requires a **classic** `gh` token scope (`gist`);
+> fine-grained tokens don't support gists. `gh auth login` handles this for you.
 
 ## How it works
 

@@ -25,6 +25,10 @@
         <select id="versionSel"></select>
       </label>
     </div>
+    <div class="saveActions" id="saveActions" hidden>
+      <button class="btn" id="saveBtn">Save to gist</button>
+      <a class="savedlink" id="savedLink" href="#" target="_blank" rel="noopener" hidden></a>
+    </div>
     <div class="reviewActions" id="reviewActions" hidden>
       <span class="pill pending" id="reviewPill">● review pending</span>
       <button class="btn approve" id="approveBtn">Approve plan</button>
@@ -83,6 +87,27 @@
       <div class="row">
         <button class="btn" id="rejectCancel">Cancel</button>
         <button class="btn reject" id="rejectConfirm">Send back to Claude</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="saveModal" id="saveModal" hidden>
+    <div class="box">
+      <h3 id="saveTitle">Save plan to a gist</h3>
+      <div class="channelStatus" id="channelStatus"></div>
+      <label class="field">Storage channel
+        <select id="saveChannel"></select>
+      </label>
+      <label class="field">Gist description
+        <input type="text" id="saveDesc" placeholder="Short description shown in your gist list" />
+      </label>
+      <label class="field">File name
+        <input type="text" id="saveFilename" placeholder="plan.md" />
+      </label>
+      <p class="hint" id="saveHint"></p>
+      <div class="row">
+        <button class="btn" id="saveCancel">Cancel</button>
+        <button class="btn primary" id="saveConfirm">Save</button>
       </div>
     </div>
   </div>
