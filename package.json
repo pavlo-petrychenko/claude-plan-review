@@ -1,0 +1,44 @@
+{
+  "name": "claude-plan-review",
+  "version": "0.1.0",
+  "description": "Review, comment on, and approve/reject Claude Code plans in a local GitHub-style web UI — with persistent comments, version history, and diffs.",
+  "type": "module",
+  "bin": {
+    "claude-plan-review": "src/cli.ts"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "serve": "bun src/server.ts",
+    "hook": "bun src/hook.ts",
+    "stop": "bun src/cli.ts stop"
+  },
+  "dependencies": {
+    "marked": "^14.1.3"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "plan",
+    "plan-mode",
+    "code-review",
+    "hooks",
+    "exitplanmode"
+  ],
+  "homepage": "https://github.com/USER/claude-plan-review#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/USER/claude-plan-review.git"
+  },
+  "bugs": {
+    "url": "https://github.com/USER/claude-plan-review/issues"
+  },
+  "author": "pavlo.p@mate.academy",
+  "license": "MIT"
+}

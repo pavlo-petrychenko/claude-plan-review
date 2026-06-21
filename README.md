@@ -1,0 +1,113 @@
+# claude-plan-review
+
+Review Claude Code **plans** in a local, GitHub-style web UI — leave persistent
+comments, approve or send changes back to Claude, and keep every plan iteration
+with its comments and diffs. All from the browser; no console needed.
+
+When Claude finishes a plan in **plan mode**, a `PreToolUse` hook on the
+`ExitPlanMode` tool intercepts it, opens the plan in your browser, and **blocks**
+until you decide:
+
+- **Approve** → Claude exits plan mode and starts implementing.
+- **Request changes** → your line + general comments are sent back as the denial
+  reason; Claude stays in plan mode and revises, producing a new version.
+
+Everything is stored **outside your repo** (`~/.claude/plan-review/`), keyed by
+the worktree path — so no `.gitignore` churn and no risk of committing review data.
+Git worktrees are scoped separately automatically.
+
+## Features
+
+- 📄 GitHub-style **rendered preview** of the plan markdown
+- 💬 **Line comments** + general comments, **persistent** across reloads
+- 🕑 **Version history** — every `ExitPlanMode` is an immutable snapshot
+- 🔀 **Diff** current vs any previous version — **side-by-side or unified** (toggle)
+- ✅ **Approve / request-changes** straight from the UI, fed back to Claude
+- 🗂 Per-worktree scoping; per-project opt-in (only runs where you enable the hook)
+- ⚡ Tiny, zero-framework UI; Bun server; one dependency (`marked`)
+
+## Requirements
+
+- [Bun](https://bun.sh) ≥ 1.1 (`curl -fsSL https://bun.sh/install | bash`)
+- Claude Code ≥ 2.1 (verified against 2.1.185)
+
+## Setup
+
+Two ways to install, depending on whether it's been published to npm.
+
+### Option A — published (recommended for end users)
+
+No clone, no checkout. From inside the project you want to enable:
+
+```bash
+cd /path/to/your/project
+bunx claude-plan-review init --bunx        # writes a portable hook into .claude/settings.json
+#   add --local to write .claude/settings.local.json instead (personal, gitignored)
+```
+
+`--bunx` makes the hook run as `bunx claude-plan-review hook`, so it works on any
+machine that has Bun — nothing to keep in your repo but the one settings entry.
+
+### Option B — from a local clone (for hacking on it)
+
+```bash
+git clone https://github.com/USER/claude-plan-review
+cd claude-plan-review
+bun install
+bun src/cli.ts init /path/to/your/project   # writes an absolute-path hook command
+```
+
+### Either way
+
+**Reopen the `/hooks` menu once (or restart Claude Code)** in that project so the
+new hook is picked up. Next time you finish a plan in plan mode, your browser opens
+to the review. The server auto-starts on first use; nothing else to run.
+
+## Usage
+
+| Command | What it does |
+| --- | --- |
+| `bun src/cli.ts init [dir] [--local] [--bunx]` | Wire the `ExitPlanMode` hook into a project |
+| `bun src/cli.ts serve [port]` | Start the review server manually (default `4607`) |
+| `bun src/cli.ts stop` | Stop the running server |
+
+The server auto-starts on the first plan and stays up, so you can browse history
+anytime at `http://localhost:4607`.
+
+## Configuration (env vars)
+
+| Var | Default | Meaning |
+| --- | --- | --- |
+| `PLAN_REVIEW_HOME` | `~/.claude/plan-review` | Where versions + comments are stored |
+| `PLAN_REVIEW_PORT` | `4607` | Server port |
+| `PLAN_REVIEW_TIMEOUT` | `1800` | Seconds the hook blocks waiting for your decision before falling back to Claude's normal approval prompt |
+
+> The hook entry sets `timeout: 1800` so Claude Code waits while you review.
+
+## How it works
+
+```
+Claude finishes plan ──> PreToolUse hook (ExitPlanMode)
+                          │  reads {plan, planFilePath, cwd, session_id} from stdin
+                          │  stores a new version under ~/.claude/plan-review/<cwd-key>/
+                          │  ensures the server is up, opens the browser
+                          │  BLOCKS, polling for your decision
+   browser (you) ─────────┘
+     approve  ──> hook emits {permissionDecision:"allow"}            ──> Claude implements
+     request  ──> hook emits {permissionDecision:"deny", reason:...} ──> Claude revises (new version)
+```
+
+## Storage layout
+
+```
+~/.claude/plan-review/
+  projects/<sanitized-cwd>/
+    meta.json
+    versions/0001.md  0001.json  0002.md  0002.json   # immutable snapshots
+    comments/0001.json  0002.json                     # comments per version
+  reviews/<id>.json                                    # pending/resolved review requests
+```
+
+## License
+
+MIT

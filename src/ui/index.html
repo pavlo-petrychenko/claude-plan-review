@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plan Review</title>
+  <link rel="stylesheet" href="/style.css" />
+  <script>
+    // apply saved theme before first paint to avoid a flash
+    try { var t = localStorage.getItem("planReviewTheme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="title">Plan Review</span>
+    </div>
+    <div class="selectors">
+      <label>Project
+        <select id="projectSel"></select>
+      </label>
+      <label>Version
+        <select id="versionSel"></select>
+      </label>
+    </div>
+    <div class="reviewActions" id="reviewActions" hidden>
+      <span class="pill pending" id="reviewPill">● review pending</span>
+      <button class="btn approve" id="approveBtn">Approve plan</button>
+      <button class="btn reject" id="rejectBtn">Request changes</button>
+    </div>
+    <label class="themePick">Theme
+      <select id="themeSel">
+        <option value="auto">Auto</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="preview">Preview</button>
+    <button class="tab" data-tab="source">Source &amp; comments <span class="count" id="cCount"></span></button>
+    <button class="tab" data-tab="diff">Diff</button>
+  </nav>
+
+  <main>
+    <!-- PREVIEW -->
+    <section class="panel active" id="panel-preview">
+      <article class="markdown-body" id="preview"></article>
+    </section>
+
+    <!-- SOURCE + COMMENTS -->
+    <section class="panel" id="panel-source">
+      <div class="source" id="source"></div>
+      <div class="general">
+        <h3>General comments</h3>
+        <div id="generalList"></div>
+        <div class="composer">
+          <textarea id="generalInput" placeholder="Leave a general comment on this plan…"></textarea>
+          <button class="btn" id="generalAdd">Comment</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- DIFF -->
+    <section class="panel" id="panel-diff">
+      <div class="diffbar">
+        <label>Compare base
+          <select id="baseSel"></select>
+        </label>
+        <span class="arrow">→ current v<span id="diffCur"></span></span>
+        <div class="modetoggle">
+          <button class="seg active" data-mode="split">Side-by-side</button>
+          <button class="seg" data-mode="unified">Unified</button>
+        </div>
+        <span class="diffstat" id="diffStat"></span>
+      </div>
+      <div id="diff"></div>
+    </section>
+  </main>
+
+  <div class="rejectModal" id="rejectModal" hidden>
+    <div class="box">
+      <h3>Request changes</h3>
+      <p>Your line &amp; general comments will be sent back to Claude, which stays in plan mode and revises. Add an optional summary:</p>
+      <textarea id="rejectSummary" placeholder="Optional summary of requested changes…"></textarea>
+      <div class="row">
+        <button class="btn" id="rejectCancel">Cancel</button>
+        <button class="btn reject" id="rejectConfirm">Send back to Claude</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
