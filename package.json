@@ -1,6 +1,6 @@
 {
   "name": "claude-plan-review",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Review, comment on, and approve/reject Claude Code plans in a local GitHub-style web UI — with persistent comments, version history, and diffs.",
   "type": "module",
   "bin": {

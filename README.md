@@ -61,6 +61,18 @@ bun  src/cli.js init /path/to/your/project   # …or…
 node src/cli.js init /path/to/your/project   # writes an absolute-path hook command
 ```
 
+### All projects at once (global)
+
+Install once, enable everywhere — the hook goes in your user-level `~/.claude/settings.json`:
+
+```bash
+npm install -g claude-plan-review     # or: bun add -g claude-plan-review
+claude-plan-review init --global
+```
+
+This fires the review for plans in **every** project, with no per-project setup. Don't also
+run a per-project `init` in the same project, or the hook will fire twice.
+
 ### Either way
 
 **Reopen the `/hooks` menu once (or restart Claude Code)** in that project so the

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_PORT, SERVER_FILE } from "./paths.js";
@@ -34,6 +35,14 @@ function chooseRuntime(args) {
 
 function hookCommand(args) {
   const runtime = chooseRuntime(args);
+  // global install → use the bare `claude-plan-review` command (resolved via PATH at hook time).
+  // We intentionally do NOT hardcode an absolute path: version managers like fnm/nvm expose
+  // bins via per-shell paths that don't persist across sessions.
+  if (args.includes("--global")) {
+    if (canRun("claude-plan-review")) return "claude-plan-review hook";
+    // not on PATH → fall back to the package runner
+    return runtime === "node" ? "npx claude-plan-review hook" : "bunx claude-plan-review hook";
+  }
   if (args.includes("--published") || args.includes("--bunx")) {
     // portable command using the runtime's package runner
     return runtime === "node" ? "npx claude-plan-review hook" : "bunx claude-plan-review hook";
@@ -50,10 +59,12 @@ function readJSON(path, fallback) {
 }
 
 function cmdInit(args) {
+  const global = args.includes("--global");
   const local = args.includes("--local");
   const dirArg = args.find((a) => !a.startsWith("--") && a !== chooseRuntime(args));
-  const projectDir = resolve(dirArg || process.cwd());
-  const settingsFile = join(projectDir, ".claude", local ? "settings.local.json" : "settings.json");
+  const settingsFile = global
+    ? join(homedir(), ".claude", "settings.json")
+    : join(resolve(dirArg || process.cwd()), ".claude", local ? "settings.local.json" : "settings.json");
   mkdirSync(dirname(settingsFile), { recursive: true });
 
   const settings = readJSON(settingsFile, {});
@@ -79,7 +90,7 @@ function cmdInit(args) {
   }
   console.log(`\nRuntime: ${chooseRuntime(args)}\nCommand: ${command}`);
   console.log(
-    `\nReopen the /hooks menu once (or restart Claude Code) in this project so the new hook is picked up.\n` +
+    `\nReopen the /hooks menu once (or restart Claude Code) ${global ? "in any project" : "in this project"} so the new hook is picked up.\n` +
       `Then finish a plan in plan mode — your browser will open the review.`,
   );
 }
@@ -110,9 +121,10 @@ function usage() {
   console.log(`claude-plan-review — review Claude Code plans in your browser (runs on Bun or Node ≥18)
 
 Usage:
-  claude-plan-review init [dir] [--local] [--published] [--runtime bun|node]
-                                  Wire the ExitPlanMode hook into a project.
+  claude-plan-review init [dir] [--global] [--local] [--published] [--runtime bun|node]
+                                  Wire the ExitPlanMode hook into a project (or all projects).
                                   Runtime auto-detects (Bun if installed, else Node).
+                                  --global     → ~/.claude/settings.json (applies to ALL projects)
                                   --local      → .claude/settings.local.json
                                   --published  → portable bunx/npx command (after npm publish)
                                   --runtime    → force a runtime
