@@ -1,5 +1,5 @@
 /**
- * Claude Code PreToolUse hook for the ExitPlanMode tool.
+ * Claude Code PreToolUse hook for the ExitPlanMode tool. Runs on Bun or Node ≥18.
  *
  * Verified mechanics (Claude Code 2.1.185):
  *   stdin  = { tool_name:"ExitPlanMode", tool_input:{ plan, planFilePath }, cwd, session_id, tool_use_id, ... }
@@ -10,20 +10,20 @@
  *   allow          → plan approved, exits plan mode.
  */
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { DEFAULT_PORT, SERVER_FILE } from "./paths.ts";
-import { getReview, recordPlan } from "./store.ts";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { DEFAULT_PORT, SERVER_FILE } from "./paths.js";
+import { getReview, recordPlan } from "./store.js";
 
-const SERVER_SCRIPT = join(import.meta.dir, "server.ts");
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SERVER_SCRIPT = join(HERE, "server.js");
 const TIMEOUT_MS = Number(process.env.PLAN_REVIEW_TIMEOUT || 1800) * 1000;
 const POLL_MS = 700;
 
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function out(decision: "allow" | "deny", reason: string, sys: string) {
+function out(decision, reason, sys) {
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
@@ -36,7 +36,7 @@ function out(decision: "allow" | "deny", reason: string, sys: string) {
   );
 }
 
-function serverPort(): number {
+function serverPort() {
   try {
     return JSON.parse(readFileSync(SERVER_FILE, "utf8")).port || DEFAULT_PORT;
   } catch {
@@ -44,7 +44,7 @@ function serverPort(): number {
   }
 }
 
-async function isUp(port: number): Promise<boolean> {
+async function isUp(port) {
   try {
     const res = await fetch(`http://localhost:${port}/api/health`, {
       signal: AbortSignal.timeout(500),
@@ -55,10 +55,10 @@ async function isUp(port: number): Promise<boolean> {
   }
 }
 
-async function ensureServer(): Promise<number> {
-  let port = serverPort();
+async function ensureServer() {
+  const port = serverPort();
   if (await isUp(port)) return port;
-  // spawn detached so it outlives this hook process
+  // spawn detached with the SAME runtime that's running this hook (node or bun)
   const child = spawn(process.execPath, [SERVER_SCRIPT, String(port)], {
     detached: true,
     stdio: "ignore",
@@ -68,16 +68,12 @@ async function ensureServer(): Promise<number> {
     if (await isUp(port)) return port;
     await sleep(150);
   }
-  return port; // best effort; browser open may still race in
+  return port; // best effort
 }
 
-function openBrowser(targetUrl: string) {
+function openBrowser(targetUrl) {
   const cmd =
-    process.platform === "darwin"
-      ? "open"
-      : process.platform === "win32"
-        ? "cmd"
-        : "xdg-open";
+    process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
   const args = process.platform === "win32" ? ["/c", "start", "", targetUrl] : [targetUrl];
   try {
     spawn(cmd, args, { detached: true, stdio: "ignore" }).unref();
@@ -87,17 +83,16 @@ function openBrowser(targetUrl: string) {
 }
 
 async function main() {
-  const raw = await Bun.stdin.text();
-  let input: any = {};
+  let input = {};
   try {
-    input = JSON.parse(raw);
+    input = JSON.parse(readFileSync(0, "utf8")); // fd 0 = stdin (works on node + bun)
   } catch {
     process.exit(0); // can't parse → don't interfere
   }
 
   if (input.tool_name !== "ExitPlanMode") process.exit(0);
 
-  const plan: string = input.tool_input?.plan ?? "";
+  const plan = input.tool_input?.plan ?? "";
   if (!plan.trim()) process.exit(0);
 
   const { key, version, reviewId } = recordPlan({
@@ -133,7 +128,6 @@ async function main() {
     await sleep(POLL_MS);
   }
 
-  // timed out → emit nothing so Claude Code's normal plan-approval flow takes over
   process.stderr.write(`plan-review: timed out after ${TIMEOUT_MS / 1000}s — falling back\n`);
   process.exit(0);
 }

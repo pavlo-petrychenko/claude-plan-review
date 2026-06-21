@@ -4,7 +4,7 @@
   "description": "Review, comment on, and approve/reject Claude Code plans in a local GitHub-style web UI — with persistent comments, version history, and diffs.",
   "type": "module",
   "bin": {
-    "claude-plan-review": "src/cli.ts"
+    "claude-plan-review": "src/cli.js"
   },
   "files": [
     "src",
@@ -12,14 +12,15 @@
     "LICENSE"
   ],
   "scripts": {
-    "serve": "bun src/server.ts",
-    "hook": "bun src/hook.ts",
-    "stop": "bun src/cli.ts stop"
+    "serve": "node src/server.js",
+    "hook": "node src/hook.js",
+    "stop": "node src/cli.js stop"
   },
   "dependencies": {
     "marked": "^14.1.3"
   },
   "engines": {
+    "node": ">=18",
     "bun": ">=1.1.0"
   },
   "keywords": [
@@ -31,13 +32,13 @@
     "hooks",
     "exitplanmode"
   ],
-  "homepage": "https://github.com/USER/claude-plan-review#readme",
+  "homepage": "https://github.com/pavlo-petrychenko/claude-plan-review#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/USER/claude-plan-review.git"
+    "url": "git+https://github.com/pavlo-petrychenko/claude-plan-review.git"
   },
   "bugs": {
-    "url": "https://github.com/USER/claude-plan-review/issues"
+    "url": "https://github.com/pavlo-petrychenko/claude-plan-review/issues"
   },
   "author": "pavlo.p@mate.academy",
   "license": "MIT"

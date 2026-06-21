@@ -16,10 +16,10 @@ export const DEFAULT_PORT = Number(process.env.PLAN_REVIEW_PORT || 4607);
  * sanitized-path convention Claude Code itself uses for ~/.claude/projects/.
  * Distinct git worktrees have distinct paths → distinct keys automatically.
  */
-export function projectKey(cwd: string): string {
+export function projectKey(cwd) {
   return cwd.replace(/[^a-zA-Z0-9]/g, "-");
 }
 
-export function projectDir(key: string): string {
+export function projectDir(key) {
   return join(PROJECTS_DIR, key);
 }

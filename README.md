@@ -28,7 +28,9 @@ Git worktrees are scoped separately automatically.
 
 ## Requirements
 
-- [Bun](https://bun.sh) ≥ 1.1 (`curl -fsSL https://bun.sh/install | bash`)
+- **Either** [Bun](https://bun.sh) ≥ 1.1 **or** [Node](https://nodejs.org) ≥ 18 — the
+  tool is plain ESM JavaScript and runs unchanged on both. `init` auto-detects which
+  you have (preferring Bun) and writes the matching hook command; override with `--runtime`.
 - Claude Code ≥ 2.1 (verified against 2.1.185)
 
 ## Setup
@@ -41,20 +43,22 @@ No clone, no checkout. From inside the project you want to enable:
 
 ```bash
 cd /path/to/your/project
-bunx claude-plan-review init --bunx        # writes a portable hook into .claude/settings.json
+bunx claude-plan-review init --published     # if you have Bun
+npx  claude-plan-review init --published     # if you have Node
 #   add --local to write .claude/settings.local.json instead (personal, gitignored)
 ```
 
-`--bunx` makes the hook run as `bunx claude-plan-review hook`, so it works on any
-machine that has Bun — nothing to keep in your repo but the one settings entry.
+`--published` makes the hook run via the package runner (`bunx`/`npx`), so it works on
+any machine — nothing to keep in your repo but the one settings entry.
 
 ### Option B — from a local clone (for hacking on it)
 
 ```bash
-git clone https://github.com/USER/claude-plan-review
+git clone https://github.com/pavlo-petrychenko/claude-plan-review
 cd claude-plan-review
-bun install
-bun src/cli.ts init /path/to/your/project   # writes an absolute-path hook command
+bun install                                  # or: npm install
+bun  src/cli.js init /path/to/your/project   # …or…
+node src/cli.js init /path/to/your/project   # writes an absolute-path hook command
 ```
 
 ### Either way
@@ -65,11 +69,13 @@ to the review. The server auto-starts on first use; nothing else to run.
 
 ## Usage
 
+Use `bun` or `node` interchangeably (or `bunx`/`npx claude-plan-review …` when published):
+
 | Command | What it does |
 | --- | --- |
-| `bun src/cli.ts init [dir] [--local] [--bunx]` | Wire the `ExitPlanMode` hook into a project |
-| `bun src/cli.ts serve [port]` | Start the review server manually (default `4607`) |
-| `bun src/cli.ts stop` | Stop the running server |
+| `… cli.js init [dir] [--local] [--published] [--runtime bun\|node]` | Wire the `ExitPlanMode` hook into a project |
+| `… cli.js serve [port]` | Start the review server manually (default `4607`) |
+| `… cli.js stop` | Stop the running server |
 
 The server auto-starts on the first plan and stays up, so you can browse history
 anytime at `http://localhost:4607`.

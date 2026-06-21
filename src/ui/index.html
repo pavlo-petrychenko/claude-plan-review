@@ -15,6 +15,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="title">Plan Review</span>
+      <span class="ver" id="ver"></span>
     </div>
     <div class="selectors">
       <label>Project
@@ -29,13 +30,7 @@
       <button class="btn approve" id="approveBtn">Approve plan</button>
       <button class="btn reject" id="rejectBtn">Request changes</button>
     </div>
-    <label class="themePick">Theme
-      <select id="themeSel">
-        <option value="auto">Auto</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-      </select>
-    </label>
+    <button class="iconbtn" id="themeToggle" title="Toggle light / dark theme" aria-label="Toggle theme">🌓</button>
   </header>
 
   <nav class="tabs">
