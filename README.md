@@ -54,7 +54,7 @@ any machine — nothing to keep in your repo but the one settings entry.
 ### Option B — from a local clone (for hacking on it)
 
 ```bash
-git clone https://github.com/pavlo-petrychenko/claude-plan-review
+git clone https://github.com/pavlo-petrychenko/claude-plan-preview-local
 cd claude-plan-review
 bun install                                  # or: npm install
 bun  src/cli.js init /path/to/your/project   # …or…

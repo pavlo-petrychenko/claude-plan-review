@@ -32,13 +32,13 @@
     "hooks",
     "exitplanmode"
   ],
-  "homepage": "https://github.com/pavlo-petrychenko/claude-plan-review#readme",
+  "homepage": "https://github.com/pavlo-petrychenko/claude-plan-preview-local#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pavlo-petrychenko/claude-plan-review.git"
+    "url": "git+https://github.com/pavlo-petrychenko/claude-plan-preview-local.git"
   },
   "bugs": {
-    "url": "https://github.com/pavlo-petrychenko/claude-plan-review/issues"
+    "url": "https://github.com/pavlo-petrychenko/claude-plan-preview-local/issues"
   },
   "author": "pavlo.p@mate.academy",
   "license": "MIT"
