@@ -60,15 +60,6 @@ npx  claude-plan-review init --published     # if you have Node
 `--published` makes the hook run via the package runner (`bunx`/`npx`), so it works on
 any machine — nothing to keep in your repo but the one settings entry.
 
-### Option B — from a local clone (for hacking on it)
-
-```bash
-git clone https://github.com/pavlo-petrychenko/claude-plan-review
-cd claude-plan-review
-bun install                                  # or: npm install
-bun  src/cli.js init /path/to/your/project   # …or…
-node src/cli.js init /path/to/your/project   # writes an absolute-path hook command
-```
 
 ### All projects at once (global)
 
