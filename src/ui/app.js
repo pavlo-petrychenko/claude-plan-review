@@ -359,13 +359,22 @@ async function refreshReview() {
 }
 
 async function resolve(decision) {
-  await api(`/api/reviews/${state.reviewId}/decision`, {
+  const review = await api(`/api/reviews/${state.reviewId}/decision`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ decision }),
   });
   await refreshReview();
-  toast(decision === "approve" ? "Plan approved — Claude will proceed." : "Sent back to Claude with your comments.");
+  if (decision === "approve") {
+    const n = review?.commentCount || 0;
+    toast(
+      n
+        ? `Approved with ${n} comment${n === 1 ? "" : "s"} — Claude will proceed and incorporate them.`
+        : "Plan approved — Claude will proceed.",
+    );
+  } else {
+    toast("Sent back to Claude with your comments.");
+  }
 }
 
 // ---------- storage / save ----------

@@ -23,17 +23,48 @@ const POLL_MS = 700;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function out(decision, reason, sys) {
-  process.stdout.write(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: decision,
-        permissionDecisionReason: reason,
-      },
-      systemMessage: sys,
-    }),
-  );
+function emit(payload) {
+  process.stdout.write(JSON.stringify(payload));
+}
+
+/**
+ * Approve and auto-proceed WITHOUT the terminal "Exit plan mode?" keypress.
+ *
+ * ExitPlanMode reports requiresUserInteraction()=true, so a bare allow falls
+ * through to the native prompt. The permission combiner only bypasses the
+ * prompt when the hook ALSO returns `updatedInput` (it treats that as "the hook
+ * already satisfied the user interaction"). So we echo the original tool input
+ * back. `additionalContext`, when present, carries the reviewer's notes into
+ * Claude's context — i.e. "approve with comments".
+ * (Verified against the Claude Code 2.1.185 binary.)
+ */
+function allow(toolInput, notes) {
+  const hookSpecificOutput = {
+    hookEventName: "PreToolUse",
+    permissionDecision: "allow",
+    permissionDecisionReason: notes
+      ? "Approved with comments in the plan-review UI."
+      : "Approved in the plan-review UI.",
+    updatedInput: toolInput, // REQUIRED to skip the native approval prompt
+  };
+  if (notes) hookSpecificOutput.additionalContext = notes;
+  emit({
+    hookSpecificOutput,
+    systemMessage: notes
+      ? "✅ Plan approved with comments via plan-review"
+      : "✅ Plan approved via plan-review",
+  });
+}
+
+function deny(reason) {
+  emit({
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: reason,
+    },
+    systemMessage: "📝 Changes requested via plan-review",
+  });
 }
 
 function serverPort() {
@@ -92,7 +123,8 @@ async function main() {
 
   if (input.tool_name !== "ExitPlanMode") process.exit(0);
 
-  const plan = input.tool_input?.plan ?? "";
+  const toolInput = input.tool_input ?? {};
+  const plan = toolInput.plan ?? "";
   if (!plan.trim()) process.exit(0);
 
   const { key, version, reviewId } = recordPlan({
@@ -114,15 +146,11 @@ async function main() {
   while (Date.now() < deadline) {
     const review = getReview(reviewId);
     if (review && review.status === "approved") {
-      out("allow", "Approved in the plan-review UI.", "✅ Plan approved via plan-review");
+      allow(toolInput, review.notes);
       process.exit(0);
     }
     if (review && review.status === "rejected") {
-      out(
-        "deny",
-        review.reason || "Changes requested in the plan-review UI.",
-        "📝 Changes requested via plan-review",
-      );
+      deny(review.reason || "Changes requested in the plan-review UI.");
       process.exit(0);
     }
     await sleep(POLL_MS);

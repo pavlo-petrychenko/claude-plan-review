@@ -198,27 +198,50 @@ export function getReview(id) {
   return existsSync(reviewPath(id)) ? readJSON(reviewPath(id), null) : null;
 }
 
-/** Resolve a review; for reject, compile its version's comments into the reason. */
+/**
+ * Resolve a review.
+ *   - reject  → compile the version's comments into `reason` (fed back via deny).
+ *   - approve → if the version has comments, compile them into `notes`
+ *               (delivered to Claude as additionalContext on the allow — "approve with comments").
+ * Returns the review including `commentCount` so callers can reflect it in the UI.
+ */
 export function resolveReview(id, decision) {
   const review = getReview(id);
   if (!review) return null;
   review.status = decision === "approve" ? "approved" : "rejected";
   review.resolvedAt = now();
-  if (decision === "reject") review.reason = compileReason(review.projectKey, review.version);
+  review.commentCount = listComments(review.projectKey, review.version).length;
+  if (decision === "reject") {
+    review.reason = compileComments(review.projectKey, review.version, "reject");
+  } else {
+    const notes = compileComments(review.projectKey, review.version, "approve");
+    if (notes) review.notes = notes;
+  }
   writeFileSync(reviewPath(id), enc(review));
   return review;
 }
 
-function compileReason(key, n) {
+/**
+ * Format a version's comments for the model.
+ *   mode "reject"  → "address these, then re-present" (always returns text, even with no comments).
+ *   mode "approve" → "plan is approved, incorporate these notes" (returns "" when there are none).
+ */
+function compileComments(key, n, mode) {
   const comments = listComments(key, n);
   const lineComments = comments.filter((c) => c.line != null).sort((a, b) => a.line - b.line);
   const general = comments.filter((c) => c.line == null);
+
+  if (mode === "approve" && !lineComments.length && !general.length) return "";
+
   const md = getVersion(key, n)?.markdown ?? "";
   const lines = md.split("\n");
 
   const parts = [
-    "The reviewer requested changes to this plan in the plan-review UI. " +
-      "Address each comment below, then re-present the revised plan with ExitPlanMode.",
+    mode === "approve"
+      ? "The reviewer APPROVED this plan in the plan-review UI and left the notes below. " +
+        "Proceed with implementation, incorporating each note as you go."
+      : "The reviewer requested changes to this plan in the plan-review UI. " +
+        "Address each comment below, then re-present the revised plan with ExitPlanMode.",
   ];
   if (lineComments.length) {
     parts.push("\nLine comments:");
@@ -239,7 +262,7 @@ function compileReason(key, n) {
     parts.push("\nGeneral comments:");
     for (const c of general) parts.push(`- ${c.body}`);
   }
-  if (!lineComments.length && !general.length) {
+  if (mode === "reject" && !lineComments.length && !general.length) {
     parts.push("\n(No specific comments were left — please reconsider and improve the plan.)");
   }
   return parts.join("\n");

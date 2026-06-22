@@ -8,7 +8,10 @@ When Claude finishes a plan in **plan mode**, a `PreToolUse` hook on the
 `ExitPlanMode` tool intercepts it, opens the plan in your browser, and **blocks**
 until you decide:
 
-- **Approve** → Claude exits plan mode and starts implementing.
+- **Approve** → Claude exits plan mode and starts implementing **immediately** —
+  no need to switch back to the terminal and confirm. (If you leave any comments
+  before approving, they ride along as guidance for Claude to incorporate while
+  implementing — "approve with comments".)
 - **Request changes** → your line + general comments are sent back as the denial
   reason; Claude stays in plan mode and revises, producing a new version.
 
@@ -140,8 +143,10 @@ Claude finishes plan ──> PreToolUse hook (ExitPlanMode)
                           │  ensures the server is up, opens the browser
                           │  BLOCKS, polling for your decision
    browser (you) ─────────┘
-     approve  ──> hook emits {permissionDecision:"allow"}            ──> Claude implements
-     request  ──> hook emits {permissionDecision:"deny", reason:...} ──> Claude revises (new version)
+     approve  ──> hook emits {permissionDecision:"allow", updatedInput, additionalContext?} ──> Claude implements
+                  (updatedInput is what skips the native "Exit plan mode?" prompt;
+                   additionalContext carries any comments as "approve with comments")
+     request  ──> hook emits {permissionDecision:"deny", reason:...}                        ──> Claude revises (new version)
 ```
 
 ## Storage layout
