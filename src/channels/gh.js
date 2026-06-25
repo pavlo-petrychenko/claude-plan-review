@@ -73,11 +73,13 @@ export function api(method, path, body) {
     }
   }
   const errText = `${r.stderr}${r.stdout}`.trim();
-  // gh surfaces a "(HTTP 404)"/"(HTTP 403)" + scope hint when the token can't touch gists
-  const needsGistScope =
-    /gist/i.test(errText) && /(scope|HTTP 40[34]|Not Found|requires)/i.test(errText);
+  const httpStatus = Number(errText.match(/HTTP (\d{3})/)?.[1]) || null;
+  // A genuine missing-scope error names the scope explicitly ("requires the
+  // 'gist' scope"). A bare 404 just means the gist is gone — don't conflate them.
+  const needsGistScope = /gist/i.test(errText) && /scope|requires/i.test(errText);
   return {
     ok: false,
+    httpStatus,
     error: errText || (r.spawnError ? String(r.spawnError.message || r.spawnError) : "gh failed"),
     needsGistScope,
   };

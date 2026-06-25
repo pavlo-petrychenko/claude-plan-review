@@ -47,12 +47,15 @@ export function available() {
 }
 
 function ghError(res) {
+  // Only blame the scope when the token actually lacks it — otherwise surface
+  // gh's real error so a deleted gist / network failure isn't misdiagnosed.
+  const missingScope = res.needsGistScope && !gh.status().scopes.includes("gist");
   const e = new Error(
-    res.needsGistScope
-      ? `GitHub rejected the gist write — your gh token likely lacks the 'gist' scope. Run: ${REFRESH_CMD}`
+    missingScope
+      ? `GitHub rejected the gist write — your gh token lacks the 'gist' scope. Run: ${REFRESH_CMD}`
       : res.error || "gh request failed",
   );
-  e.fixCommand = res.needsGistScope ? REFRESH_CMD : null;
+  e.fixCommand = missingScope ? REFRESH_CMD : null;
   return e;
 }
 
@@ -87,6 +90,10 @@ export function update({ id: gistId, markdown, description, filename, oldFilenam
     description: description ?? "",
     files: { [fileKey]: filePatch },
   });
+  // The bound gist was deleted on GitHub — recreate one and re-bind instead of failing.
+  if (!res.ok && res.httpStatus === 404) {
+    return create({ markdown, description, filename: newName });
+  }
   if (!res.ok) throw ghError(res);
   return {
     id: res.data.id,
