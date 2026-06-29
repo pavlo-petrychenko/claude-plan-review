@@ -35,12 +35,13 @@ function chooseRuntime(args) {
 
 function hookCommand(args) {
   const runtime = chooseRuntime(args);
-  // global install → use the bare `claude-plan-review` command (resolved via PATH at hook time).
-  // We intentionally do NOT hardcode an absolute path: version managers like fnm/nvm expose
-  // bins via per-shell paths that don't persist across sessions.
+  // global install → always route through the package runner (npx/bunx), never the bare
+  // `claude-plan-review` command. Version managers like fnm/nvm expose global bins only via a
+  // per-shell PATH set up by interactive shell init. `canRun` succeeds here (init runs in an
+  // interactive shell) but Claude Code fires hooks in a NON-interactive shell where that PATH
+  // is absent, so the bare command resolves at init time yet fails — silently — at hook time.
+  // `npx`/`bunx` are inherited reliably from Claude Code's launching env, so they work either way.
   if (args.includes("--global")) {
-    if (canRun("claude-plan-review")) return "claude-plan-review hook";
-    // not on PATH → fall back to the package runner
     return runtime === "node" ? "npx claude-plan-review hook" : "bunx claude-plan-review hook";
   }
   if (args.includes("--published") || args.includes("--bunx")) {
