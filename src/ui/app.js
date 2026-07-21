@@ -26,8 +26,7 @@ const state = {
   comments: [],
   tab: "preview",
   diffMode: "split",
-  sel: { anchor: null, start: null, end: null }, // source line-range selection
-  dragging: false,
+  pendingSel: null, // { start, end, quote } — a live text selection awaiting "Comment"
   storage: {}, // channel bindings for the current project, e.g. { gist: {...} }
   channels: [], // channel readiness (loaded when the save modal opens)
 };
@@ -113,11 +112,11 @@ async function selectProject(key, wantV) {
 
 async function loadVersion(n) {
   state.version = n;
+  hideSelPop();
   state.data = await api(`/api/projects/${encodeURIComponent(state.key)}/versions/${n}`);
   state.comments = await api(`/api/projects/${encodeURIComponent(state.key)}/versions/${n}/comments`);
   $("diffCur").textContent = n;
   renderPreview();
-  renderSource();
   renderGeneral();
   updateCommentCount();
   refreshSaveUI();
@@ -128,6 +127,7 @@ async function loadVersion(n) {
 // ---------- rendering ----------
 function renderPreview() {
   $("preview").innerHTML = state.data.html || "<p class='empty'>(empty plan)</p>";
+  renderThreads();
 }
 
 // threads are anchored under the END line of their range; covered = every line a comment spans
@@ -154,28 +154,45 @@ function locLabel(c) {
 
 function commentHTML(c) {
   const loc = locLabel(c);
+  const quote = c.quote ? `<div class="cquote">${esc(c.quote)}</div>` : "";
   return `<div class="comment" data-id="${c.id}">
     <div class="chead"><span><b>${esc(c.author)}</b>${loc ? ` · <span class="loc">${loc}</span>` : ""} · ${new Date(c.createdAt).toLocaleString()}</span>
       <button class="del" data-del="${c.id}">delete</button></div>
+    ${quote}
     <div class="cbody">${esc(c.body)}</div></div>`;
 }
 
-function renderSource() {
-  const lines = (state.data.markdown || "").split("\n");
-  const { byAnchor, covered } = commentLayout();
-  const { start, end } = state.sel;
-  const inSel = (n) => start != null && n >= start && n <= end;
-  let html = "";
-  for (let i = 0; i < lines.length; i++) {
-    const num = i + 1;
-    const threads = byAnchor.get(num) || [];
-    const cls = [covered.has(num) ? "has-comments" : "", inSel(num) ? "sel" : ""].filter(Boolean).join(" ");
-    html += `<div class="srow ${cls}" data-line="${num}">
-      <div class="sgutter" data-add="${num}">${num}</div>
-      <div class="scode">${esc(lines[i]) || "&nbsp;"}</div></div>`;
-    if (threads.length) html += `<div class="threads">${threads.map(commentHTML).join("")}</div>`;
+// map a source line to the rendered block that spans it
+function blockForLine(line) {
+  const blocks = $("preview").querySelectorAll(".md-block");
+  for (const b of blocks) {
+    if (Number(b.dataset.lineStart) <= line && line <= Number(b.dataset.lineEnd)) return b;
   }
-  $("source").innerHTML = html;
+  return blocks[blocks.length - 1] || null;
+}
+
+// render inline comment threads into the preview, anchored after their block
+function renderThreads() {
+  const preview = $("preview");
+  preview.querySelectorAll(".threads, .composer.inline").forEach((n) => n.remove());
+  const { byAnchor, covered } = commentLayout();
+
+  preview.querySelectorAll(".md-block").forEach((b) => {
+    const s = Number(b.dataset.lineStart);
+    const e = Number(b.dataset.lineEnd);
+    let has = false;
+    for (let k = s; k <= e && !has; k++) if (covered.has(k)) has = true;
+    b.classList.toggle("has-comments", has);
+  });
+
+  for (const [anchor, threads] of byAnchor) {
+    const block = blockForLine(anchor);
+    if (!block) continue;
+    const box = document.createElement("div");
+    box.className = "threads";
+    box.innerHTML = threads.map(commentHTML).join("");
+    block.after(box);
+  }
 }
 
 function renderGeneral() {
@@ -189,15 +206,15 @@ function updateCommentCount() {
 }
 
 // ---------- comments ----------
-async function addComment(line, lineEnd, body) {
+async function addComment(line, lineEnd, body, quote) {
   if (!body.trim()) return;
   await api(`/api/projects/${encodeURIComponent(state.key)}/versions/${state.version}/comments`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ line, lineEnd, body }),
+    body: JSON.stringify({ line, lineEnd, quote: quote ?? null, body }),
   });
   state.comments = await api(`/api/projects/${encodeURIComponent(state.key)}/versions/${state.version}/comments`);
-  renderSource();
+  renderPreview();
   renderGeneral();
   updateCommentCount();
 }
@@ -207,44 +224,76 @@ async function delComment(id) {
     method: "DELETE",
   });
   state.comments = state.comments.filter((c) => c.id !== id);
-  renderSource();
+  renderPreview();
   renderGeneral();
   updateCommentCount();
 }
 
-// lightweight selection repaint — toggles a class on existing rows so we don't
-// rebuild the DOM mid-drag (which would break pointer tracking)
-function paintSelection() {
-  const { start, end } = state.sel;
-  document.querySelectorAll("#source .srow").forEach((row) => {
-    const n = Number(row.dataset.line);
-    row.classList.toggle("sel", start != null && n >= start && n <= end);
+// ---------- text selection → line-anchored comment ----------
+// the current selection as a source line-range + quoted text, or null.
+// We map the selection to every `.md-block` whose CONTENT actually overlaps it
+// (a strict range test) rather than reading the start/end containers directly —
+// triple-clicks and drags routinely park the range end on the *next* block's
+// boundary, which would otherwise inflate the range and misplace the thread.
+function currentSelection() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+  const range = sel.getRangeAt(0);
+  const preview = $("preview");
+  if (!preview.contains(range.commonAncestorContainer)) return null;
+  const quote = sel.toString().replace(/\s+/g, " ").trim();
+  if (!quote) return null;
+
+  const blocks = [];
+  preview.querySelectorAll(".md-block").forEach((b) => {
+    // intersect the selection with this block and keep it only if the overlap
+    // contains real text — a range end parked at the next block's leading
+    // boundary (offset 0 of its first child) yields an empty intersection.
+    const ir = range.cloneRange();
+    const br = document.createRange();
+    br.selectNodeContents(b);
+    if (ir.compareBoundaryPoints(Range.START_TO_START, br) < 0) ir.setStart(br.startContainer, br.startOffset);
+    if (ir.compareBoundaryPoints(Range.END_TO_END, br) > 0) ir.setEnd(br.endContainer, br.endOffset);
+    if (!ir.collapsed && ir.toString().trim()) blocks.push(b);
   });
+  if (!blocks.length) return null;
+  const start = Math.min(...blocks.map((b) => Number(b.dataset.lineStart)));
+  const end = Math.max(...blocks.map((b) => Number(b.dataset.lineEnd)));
+  return { start, end, quote, rect: range.getBoundingClientRect() };
 }
 
-function clearSelection() {
-  state.sel = { anchor: null, start: null, end: null };
-  document.querySelector(".composer.inline")?.remove();
-  renderSource();
+function showSelPop(info) {
+  const pop = $("selPop");
+  pop.hidden = false;
+  pop.style.top = `${info.rect.bottom + 6}px`;
+  pop.style.left = `${info.rect.left}px`;
+  state.pendingSel = info;
 }
 
-function openComposer(start, end) {
+function hideSelPop() {
+  $("selPop").hidden = true;
+  state.pendingSel = null;
+}
+
+function openComposer(info) {
   document.querySelector(".composer.inline")?.remove();
-  const row = document.querySelector(`.srow[data-line="${end}"]`);
-  if (!row) return;
-  const label = start === end ? `line ${start}` : `lines ${start}–${end}`;
+  const block = blockForLine(info.end);
+  if (!block) return;
+  const label = info.start === info.end ? `line ${info.start}` : `lines ${info.start}–${info.end}`;
   const box = document.createElement("div");
   box.className = "composer inline";
-  box.innerHTML = `<textarea placeholder="Comment on ${label} — shift-click another line number to extend…"></textarea>
-    <button class="btn primary">Comment</button><button class="btn cancel">Cancel</button>`;
-  row.after(box);
+  box.innerHTML = `${info.quote ? `<div class="cquote">${esc(info.quote)}</div>` : ""}
+    <div class="composer-row">
+      <textarea placeholder="Comment on ${label}…"></textarea>
+      <button class="btn primary">Comment</button><button class="btn cancel">Cancel</button>
+    </div>`;
+  block.after(box);
   const ta = box.querySelector("textarea");
   ta.focus();
   box.querySelector(".primary").onclick = async () => {
-    await addComment(start, end, ta.value);
-    clearSelection();
+    await addComment(info.start, info.end, ta.value, info.quote);
   };
-  box.querySelector(".cancel").onclick = () => clearSelection();
+  box.querySelector(".cancel").onclick = () => box.remove();
 }
 
 // ---------- diff ----------
@@ -520,10 +569,7 @@ function wireUI() {
   };
 
   $("projectSel").onchange = (e) => selectProject(e.target.value);
-  $("versionSel").onchange = (e) => {
-    state.reviewId && (state.reviewId = state.reviewId); // keep
-    loadVersion(Number(e.target.value));
-  };
+  $("versionSel").onchange = (e) => loadVersion(Number(e.target.value));
   $("baseSel").onchange = () => loadDiff();
 
   document.querySelectorAll(".tab").forEach((t) => {
@@ -533,6 +579,7 @@ function wireUI() {
       t.classList.add("active");
       state.tab = t.dataset.tab;
       $("panel-" + state.tab).classList.add("active");
+      hideSelPop();
       if (state.tab === "diff") loadDiff();
     };
   });
@@ -546,45 +593,26 @@ function wireUI() {
     };
   });
 
-  // source gutter clicks + comment deletes (delegated)
-  const source = $("source");
-  // press a line number and drag to select a range; shift-click also extends
-  source.addEventListener("mousedown", (e) => {
-    const g = e.target.closest("[data-add]");
-    if (!g) return;
-    e.preventDefault(); // suppress native text selection while dragging
-    const n = Number(g.dataset.add);
-    const sel = state.sel;
-    if (e.shiftKey && sel.anchor != null) {
-      sel.start = Math.min(sel.anchor, n);
-      sel.end = Math.max(sel.anchor, n);
-    } else {
-      sel.anchor = sel.start = sel.end = n;
-    }
-    state.dragging = true;
-    source.classList.add("dragging");
-    document.querySelector(".composer.inline")?.remove();
-    paintSelection();
+  // comment on rendered text: after a selection in the preview, offer a "Comment" button
+  document.addEventListener("mouseup", (e) => {
+    if ($("selPop").contains(e.target)) return; // the button handles its own click
+    const info = currentSelection();
+    if (info) showSelPop(info);
+    else hideSelPop();
   });
-  source.addEventListener("mousemove", (e) => {
-    if (!state.dragging) return;
-    const row = e.target.closest(".srow");
-    if (!row) return;
-    const n = Number(row.dataset.line);
-    state.sel.start = Math.min(state.sel.anchor, n);
-    state.sel.end = Math.max(state.sel.anchor, n);
-    paintSelection();
-  });
-  document.addEventListener("mouseup", () => {
-    if (!state.dragging) return;
-    state.dragging = false;
-    source.classList.remove("dragging");
-    openComposer(state.sel.start, state.sel.end);
-  });
-  source.onclick = (e) => {
-    const del = e.target.closest("[data-del]");
-    if (del) return delComment(del.dataset.del);
+  window.addEventListener("scroll", hideSelPop, true);
+  $("selComment").onclick = () => {
+    const info = state.pendingSel;
+    hideSelPop();
+    window.getSelection().removeAllRanges();
+    if (info) openComposer(info);
   };
+
+  // delete comments (delegated across preview threads + general list)
+  $("preview").addEventListener("click", (e) => {
+    const del = e.target.closest("[data-del]");
+    if (del) delComment(del.dataset.del);
+  });
   $("generalList").onclick = (e) => {
     const del = e.target.closest("[data-del]");
     if (del) delComment(del.dataset.del);

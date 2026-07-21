@@ -168,6 +168,9 @@ export function addComment(key, n, c) {
     id: randomBytes(6).toString("hex"),
     line: c.line,
     lineEnd: c.line == null ? null : (c.lineEnd ?? c.line),
+    // the exact rendered text the reviewer selected in the preview (if any) —
+    // quoted back to Claude verbatim, which is more precise than a line slice.
+    quote: c.quote ? String(c.quote).slice(0, 2000) : null,
     body: c.body,
     author: c.author || "me",
     createdAt: now(),
@@ -249,12 +252,15 @@ function compileComments(key, n, mode) {
       const s = c.line;
       const e = c.lineEnd ?? s;
       const label = e !== s ? `lines ${s}-${e}` : `line ${s}`;
-      const snippet = lines
-        .slice(s - 1, e)
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .slice(0, 3)
-        .join(" / ");
+      // Prefer the reviewer's actual selected text; fall back to the source lines.
+      const snippet = c.quote
+        ? c.quote.replace(/\s+/g, " ").trim().slice(0, 300)
+        : lines
+            .slice(s - 1, e)
+            .map((l) => l.trim())
+            .filter(Boolean)
+            .slice(0, 3)
+            .join(" / ");
       parts.push(`- [${label}] "${snippet}"\n    → ${c.body}`);
     }
   }

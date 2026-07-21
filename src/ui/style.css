@@ -100,24 +100,22 @@ main { flex: 1; padding: 22px; max-width: 1100px; width: 100%; margin: 0 auto; }
 .markdown-body table { border-collapse: collapse; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 6px 12px; }
 
-/* source + comments */
-.source { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; font-family: var(--mono); font-size: 12.5px; }
-.srow { display: flex; align-items: flex-start; }
-.srow:hover { background: var(--bg-soft); }
-.sgutter {
-  width: 52px; flex: none; text-align: right; padding: 1px 10px 1px 0; color: var(--fg-muted);
-  user-select: none; position: relative; cursor: pointer;
-}
-.sgutter:hover::after { content: "+"; position: absolute; left: 6px; color: #fff; background: var(--accent);
-  width: 15px; height: 15px; line-height: 15px; text-align: center; border-radius: 4px; font-size: 12px; }
-.scode { white-space: pre-wrap; word-break: break-word; padding: 1px 10px; flex: 1; }
-.srow.has-comments .sgutter { box-shadow: inset 2px 0 0 #d29922; }
-.source.dragging { user-select: none; }
-.source.dragging .sgutter { cursor: ns-resize; }
-.srow.sel { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.srow.sel .sgutter { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--fg); }
-.threads { padding: 0 10px 0 62px; background: var(--bg-soft); }
+/* preview commenting: select text → comment inline */
+.selhint { color: var(--fg-muted); font-size: 12px; margin: 0 0 10px; }
+.markdown-body .md-block { margin-left: -16px; padding-left: 16px; } /* gutter for the has-comments marker */
+.markdown-body .md-block.has-comments { box-shadow: inset 3px 0 0 #d29922; }
+.markdown-body ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+
+.selpop { position: fixed; z-index: 40; }
+.selpop .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 2px 10px #0004; }
+.selpop .btn.primary:hover { filter: brightness(1.08); }
+
+.threads { margin: 8px 0 14px; }
 .comment .loc { font-family: var(--mono); color: var(--accent); }
+.cquote {
+  border-left: 3px solid var(--accent); padding: 3px 10px; margin: 6px 12px; color: var(--fg-muted);
+  font-style: italic; background: var(--bg-soft); border-radius: 0 4px 4px 0; white-space: pre-wrap; word-break: break-word;
+}
 
 .comment {
   border: 1px solid var(--border); border-radius: 8px; margin: 8px 0; background: var(--bg); font-family: var(--sans);
@@ -129,7 +127,9 @@ main { flex: 1; padding: 22px; max-width: 1100px; width: 100%; margin: 0 auto; }
 .comment .del:hover { color: var(--red); }
 
 .composer { display: flex; gap: 8px; margin: 8px 0 12px; }
-.composer.inline { padding: 8px 10px 12px 62px; background: var(--bg-soft); }
+.composer.inline { display: block; padding: 10px 12px; margin: 8px 0 14px; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 8px; }
+.composer.inline .cquote { margin: 0 0 8px; }
+.composer.inline .composer-row { display: flex; gap: 8px; }
 textarea {
   flex: 1; font-family: var(--sans); font-size: 13px; padding: 8px 10px; border: 1px solid var(--border);
   border-radius: 6px; background: var(--bg); color: var(--fg); min-height: 38px; resize: vertical;

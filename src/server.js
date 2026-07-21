@@ -27,10 +27,36 @@ const pkg = JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8"));
 
 marked.setOptions({ gfm: true, breaks: false });
 
+/**
+ * Render markdown, wrapping each top-level block in a `.md-block` div that
+ * carries its SOURCE line range (data-line-start / data-line-end). The browser
+ * uses these to map a text selection made in the rendered preview back to
+ * source line numbers, so comments stay line-anchored (same model the diff and
+ * comment store already use) while the reviewer works entirely in the preview.
+ */
 function renderMarkdown(md) {
-  const html = marked.parse(md, { async: false });
+  const src = md || "";
+  const tokens = marked.lexer(src);
+  let offset = 0; // running char offset into `src`; token.raw values concatenate to src
+  const out = [];
+  for (const tok of tokens) {
+    const raw = tok.raw || "";
+    if (tok.type !== "space") {
+      const before = src.slice(0, offset);
+      const startLine = before.length ? before.split("\n").length : 1;
+      const trimmed = raw.replace(/\s+$/, ""); // ignore trailing blank lines in the range
+      const endLine = src.slice(0, offset + trimmed.length).split("\n").length;
+      const one = [tok];
+      one.links = tokens.links; // preserve reference-style link definitions
+      const html = marked.parser(one);
+      out.push(
+        `<div class="md-block" data-line-start="${startLine}" data-line-end="${endLine}">${html}</div>`,
+      );
+    }
+    offset += raw.length;
+  }
   // light sanitization — local tool, content authored by your own Claude session
-  return html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  return out.join("\n").replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
 }
 
 const CONTENT_TYPES = {
@@ -162,6 +188,7 @@ async function handleApi(req, res, seg, url) {
           addComment(key, n, {
             line: body.line ?? null,
             lineEnd: body.lineEnd ?? null,
+            quote: body.quote ?? null,
             body: body.body.trim(),
           }),
         );
