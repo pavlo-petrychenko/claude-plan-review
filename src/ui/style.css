@@ -196,3 +196,58 @@ textarea {
   padding: 10px 18px; border-radius: 8px; font-size: 13px; z-index: 60; box-shadow: 0 4px 16px #0004; }
 
 .empty { color: var(--fg-muted); padding: 40px; text-align: center; }
+
+/* ---------- multi-document: sidebar + layout ---------- */
+.preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
+.preview-toolbar .selhint { margin: 0; }
+.tree-toggle { font-size: 12px; padding: 4px 10px; flex: none; }
+.tree-toggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tree-toggle.active:hover { filter: brightness(1.08); }
+
+.preview-layout { display: flex; align-items: flex-start; gap: 20px; }
+.preview-main { flex: 1; min-width: 0; }
+
+.doc-sidebar {
+  flex: none; width: 220px; align-self: stretch; position: sticky; top: 96px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg-soft);
+  padding: 6px; font-size: 13px; max-height: calc(100vh - 120px); overflow-y: auto;
+}
+.doc-sidebar .sb-head {
+  font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--fg-muted); padding: 6px 8px 8px;
+}
+.doc-sidebar .sb-row {
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 6px;
+  color: var(--fg); text-decoration: none; cursor: pointer; line-height: 1.3;
+}
+.doc-sidebar .sb-row:hover { background: var(--border-soft); }
+.doc-sidebar .sb-row.active { background: var(--border-soft); font-weight: 600; box-shadow: inset 2px 0 0 var(--accent); }
+.doc-sidebar .sb-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-badge { flex: none; background: var(--border-soft); border-radius: 999px; padding: 0 7px; font-size: 11px; color: var(--fg-muted); }
+.sb-dot { flex: none; width: 7px; height: 7px; border-radius: 999px; background: #d29922; }
+
+/* view-as-tree hides blocks display-only — they stay in the DOM for line anchoring */
+.md-block.tree-hidden, .threads.tree-hidden, .composer.inline.tree-hidden { display: none !important; }
+
+/* diff document select reuses the .diffbar label styling automatically */
+
+/* ---------- delete confirm + manage modals ---------- */
+.confirmModal, .manageModal { position: fixed; inset: 0; background: #00000066; display: flex; align-items: center; justify-content: center; z-index: 50; }
+.confirmModal .box, .manageModal .box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 460px; max-width: 92vw; }
+.manageModal .box.wide { width: 620px; max-height: 84vh; display: flex; flex-direction: column; }
+.confirmModal h3, .manageModal h3 { margin-top: 0; }
+.confirmModal p, .manageModal .hint { color: var(--fg-muted); font-size: 13px; }
+.confirmModal .row, .manageModal .row { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.confirmModal .btn:disabled, .manageModal .btn:disabled { opacity: .5; cursor: not-allowed; filter: none; }
+.pendingInfo { background: #fff8c5; color: #7d4e00; font-size: 12.5px; padding: 10px 12px; border-radius: 6px; margin-top: 12px; line-height: 1.5; }
+
+#manageList { overflow-y: auto; margin-top: 8px; }
+.mg-project { border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; overflow: hidden; }
+.mg-phead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; background: var(--bg-soft); border-bottom: 1px solid var(--border-soft); }
+.mg-name { font-weight: 600; display: flex; align-items: center; gap: 7px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-actions { display: flex; gap: 8px; flex: none; }
+.btn.sm { font-size: 12px; padding: 4px 9px; }
+.mg-vers { padding: 6px 12px; }
+.mg-ver { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; cursor: pointer; }
+.mg-ver .mg-vn { font-weight: 600; font-family: var(--mono); font-size: 12.5px; }
+.mg-meta { color: var(--fg-muted); font-size: 12px; }

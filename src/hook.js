@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_PORT, SERVER_FILE } from "./paths.js";
+import { buildDenyReason, parsePlan } from "./plan-parse.js";
 import { getReview, recordPlan } from "./store.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -127,18 +128,40 @@ async function main() {
   const plan = toolInput.plan ?? "";
   if (!plan.trim()) process.exit(0);
 
-  const { key, version, reviewId } = recordPlan({
-    cwd: input.cwd || process.cwd(),
-    plan,
-    planFilePath: input.tool_input?.planFilePath,
-    sessionId: input.session_id,
-    toolUseId: input.tool_use_id,
-  });
+  // Parse the plan into a normalized tree (or single-doc). A returned {error}
+  // is an EXPLICIT marker-validation failure → deny so Claude stays in plan
+  // mode and re-authors. Any thrown exception is unexpected → fail open (exit
+  // 0 silently) so a parser bug never blocks the user.
+  let tree;
+  try {
+    tree = parsePlan(plan);
+  } catch {
+    process.exit(0);
+  }
+  if (tree && tree.error) {
+    deny(buildDenyReason(tree.error.issues));
+    process.exit(0);
+  }
+
+  let recorded;
+  try {
+    recorded = recordPlan({
+      cwd: input.cwd || process.cwd(),
+      sessionId: input.session_id,
+      toolUseId: input.tool_use_id,
+      planFilePath: input.tool_input?.planFilePath,
+      tree,
+      origin: "hook",
+    });
+  } catch {
+    process.exit(0); // store failure → don't interfere
+  }
+  const { key, version, reviewId } = recorded;
 
   const port = await ensureServer();
   const reviewUrl = `http://localhost:${port}/?project=${encodeURIComponent(
     key,
-  )}&version=${version}&review=${reviewId}`;
+  )}&version=${version}&review=${reviewId}&doc=root`;
   openBrowser(reviewUrl);
 
   // block until the UI resolves the review (or we time out)

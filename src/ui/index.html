@@ -24,6 +24,7 @@
       <label>Version
         <select id="versionSel"></select>
       </label>
+      <button class="iconbtn" id="deleteVerBtn" title="Delete this version" aria-label="Delete this version" hidden>🗑</button>
     </div>
     <div class="saveActions" id="saveActions" hidden>
       <button class="btn" id="saveBtn">Save to gist</button>
@@ -34,6 +35,7 @@
       <button class="btn approve" id="approveBtn">Approve plan</button>
       <button class="btn reject" id="rejectBtn">Request changes</button>
     </div>
+    <button class="iconbtn" id="manageBtn" title="Manage &amp; delete plans" aria-label="Manage plans">🗄</button>
     <button class="iconbtn" id="themeToggle" title="Toggle light / dark theme" aria-label="Toggle theme">🌓</button>
   </header>
 
@@ -45,14 +47,22 @@
   <main>
     <!-- PREVIEW + COMMENTS -->
     <section class="panel active" id="panel-preview">
-      <p class="selhint">Select any text in the plan to comment on it.</p>
-      <article class="markdown-body" id="preview"></article>
-      <div class="general">
-        <h3>General comments</h3>
-        <div id="generalList"></div>
-        <div class="composer">
-          <textarea id="generalInput" placeholder="Leave a general comment on this plan…"></textarea>
-          <button class="btn" id="generalAdd">Comment</button>
+      <div class="preview-toolbar">
+        <p class="selhint">Select any text in the plan to comment on it.</p>
+        <button class="btn tree-toggle" id="treeToggle" hidden>View as tree</button>
+      </div>
+      <div class="preview-layout">
+        <aside class="doc-sidebar" id="docSidebar" hidden></aside>
+        <div class="preview-main">
+          <article class="markdown-body" id="preview"></article>
+          <div class="general">
+            <h3>General comments</h3>
+            <div id="generalList"></div>
+            <div class="composer">
+              <textarea id="generalInput" placeholder="Leave a general comment on this plan…"></textarea>
+              <button class="btn" id="generalAdd">Comment</button>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -62,6 +72,9 @@
       <div class="diffbar">
         <label>Compare base
           <select id="baseSel"></select>
+        </label>
+        <label id="diffDocWrap" hidden>Document
+          <select id="diffDocSel"></select>
         </label>
         <span class="arrow">→ current v<span id="diffCur"></span></span>
         <div class="modetoggle">
@@ -103,6 +116,30 @@
       <div class="row">
         <button class="btn" id="saveCancel">Cancel</button>
         <button class="btn primary" id="saveConfirm">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="confirmModal" id="deleteModal" hidden>
+    <div class="box">
+      <h3 id="deleteTitle">Delete</h3>
+      <p id="deleteDesc"></p>
+      <div class="pendingInfo" id="deletePending" hidden></div>
+      <div class="row">
+        <button class="btn" id="deleteCancel">Cancel</button>
+        <button class="btn reject" id="deleteConfirm">Delete</button>
+        <button class="btn reject" id="deleteForce" hidden>Force delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="manageModal" id="manageModal" hidden>
+    <div class="box wide">
+      <h3>Manage plans</h3>
+      <p class="hint">Delete individual versions, several at once, or a whole project. Deletes are permanent.</p>
+      <div id="manageList"></div>
+      <div class="row">
+        <button class="btn" id="manageClose">Close</button>
       </div>
     </div>
   </div>

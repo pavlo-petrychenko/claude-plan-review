@@ -23,3 +23,20 @@ export function projectKey(cwd) {
 export function projectDir(key) {
   return join(PROJECTS_DIR, key);
 }
+
+const pad = (n) => String(n).padStart(4, "0");
+
+/** Directory holding a tree version's manifest + per-doc markdown (tree kind only). */
+export function versionDir(key, n) {
+  return join(projectDir(key), "versions", pad(n));
+}
+
+/** manifest.json path inside a tree version's directory. */
+export function manifestPath(key, n) {
+  return join(versionDir(key, n), "manifest.json");
+}
+
+/** Path to one document file (e.g. "api.md") inside a tree version's directory. */
+export function docPath(key, n, file) {
+  return join(versionDir(key, n), file);
+}
