@@ -95,9 +95,12 @@ claude-plan-review init --global --published --runtime node   # pin --runtime to
 #   swap `--runtime node` for `--runtime bun` if the team standardises on Bun
 ```
 
-That single `init --global --published` does five things:
+That single `init --global --published` does these things:
 
 - writes the `ExitPlanMode` **hook** to `~/.claude/settings.json` (fires in **every** project);
+- writes the `EnterPlanMode` **context hook** to the same settings — it nudges Claude toward the
+  multi-document tree format as it starts planning, **without** touching plan-mode consent (it
+  makes no permission decision, so your approval to enter plan mode is untouched);
 - writes the **Stop-hook gate** to the same settings — it keeps Claude polling a tools-first
   review instead of ending its turn while your decision is still pending (see below);
 - installs the **`plan-review-multidoc` skill** to `~/.claude/skills/` (auto-triggers on large / sectioned plans);
@@ -126,7 +129,7 @@ Use `bun` or `node` interchangeably (or `bunx`/`npx claude-plan-review …` when
 
 | Command | What it does |
 | --- | --- |
-| `… cli.js init [dir] [--local] [--published] [--runtime bun\|node] [--no-skill] [--write-claude-md]` | Wire the `ExitPlanMode` hook + the Stop-hook gate, install the skill, register the MCP server |
+| `… cli.js init [dir] [--local] [--published] [--runtime bun\|node] [--no-skill] [--write-claude-md]` | Wire the `ExitPlanMode` hook + the `EnterPlanMode` context hook + the Stop-hook gate, install the skill, register the MCP server |
 | `… cli.js serve [port]` | Start the review server manually (default `4607`) |
 | `… cli.js stop` | Stop the running server |
 | `… cli.js channels` | Show storage-channel readiness (is `gh` installed / authed / `gist`-scoped?) |
@@ -246,13 +249,16 @@ the doc-tree format automatically whenever a plan is large or splits into sectio
 
 Plans no longer accumulate forever. From the UI you can:
 
-- **Delete a single version** — a per-version button with an in-app confirm.
+- **Delete a single version** — a per-version button. Deletes happen **immediately**
+  on click (no confirmation dialog).
 - **Bulk-delete / delete a whole project** — the manage modal (trash icon in the
-  header): tick versions and delete them, or remove the project entirely.
+  header): tick versions and delete them, or remove the project entirely — also immediate.
 
 Deleting the **last** version removes the project directory outright. A version with a
-**pending review** is protected: the delete returns `409` and the UI offers **Force**,
-which auto-rejects that review (telling Claude the plan was deleted) before removing it.
+**pending review** is protected: the delete is refused (`409` for a single version or
+project; a non-empty `blocked` list for a bulk delete) and the UI then pops a dialog
+offering **Force**, which auto-rejects the review (telling Claude the plan was deleted)
+before removing it. That blocked/Force dialog is the only confirmation step that remains.
 
 ## Storage layout
 

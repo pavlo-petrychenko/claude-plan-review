@@ -16,8 +16,20 @@ import { DEFAULT_PORT, SERVER_FILE } from "./paths.js";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOOK_SCRIPT = join(HERE, "hook.js");
 const STOP_GATE_SCRIPT = join(HERE, "stop-gate.js");
+const PLAN_CONTEXT_SCRIPT = join(HERE, "plan-context.js");
 const CLI_SCRIPT = fileURLToPath(import.meta.url);
 const SKILL_SRC = join(HERE, "..", "skill", "SKILL.md");
+
+// A hook command "belongs to" plan-review when it invokes one of our entrypoints,
+// regardless of prefix (env vars) or runner (node/bun/npx/bunx). Robust dedup:
+// treat `PLAN_REVIEW_TIMEOUT=… npx claude-plan-review hook`, `bunx claude-plan-review hook`,
+// and `node /abs/path/hook.js` all as the same existing hook.
+//   kind: "hook" | "stop-gate" | "plan-context"
+function isPlanReviewHook(command, kind) {
+  if (!command) return false;
+  const scriptFile = { hook: "hook.js", "stop-gate": "stop-gate.js", "plan-context": "plan-context.js" }[kind];
+  return command.includes(`claude-plan-review ${kind}`) || (!!scriptFile && command.includes(scriptFile));
+}
 
 function canRun(bin) {
   try {
@@ -73,6 +85,20 @@ function stopGateCommand(args) {
       : "bunx claude-plan-review stop-gate";
   }
   return `${resolveBin(runtime)} ${STOP_GATE_SCRIPT}`;
+}
+
+// The EnterPlanMode context-injection hook command, mirroring hookCommand's
+// runtime routing: global/published installs go through the package runner
+// (npx/bunx) so they resolve in Claude Code's non-interactive env; a local
+// install points straight at plan-context.js (which runs on import).
+function planContextCommand(args) {
+  const runtime = chooseRuntime(args);
+  if (args.includes("--global") || args.includes("--published") || args.includes("--bunx")) {
+    return runtime === "node"
+      ? "npx claude-plan-review plan-context"
+      : "bunx claude-plan-review plan-context";
+  }
+  return `${resolveBin(runtime)} ${PLAN_CONTEXT_SCRIPT}`;
 }
 
 // The program + args that launch the MCP server, mirroring hookCommand's
@@ -165,6 +191,39 @@ function readJSON(path, fallback) {
   }
 }
 
+// Warn if a plan-review ExitPlanMode hook is ALSO configured in another settings
+// scope we know about (global + project settings.json + project settings.local.json).
+// Two entries in different scopes both fire for one plan-mode exit → the review
+// opens twice. `justWrote` is the scope init targeted this run (skip it).
+function warnOtherScopes(justWrote, global, dirArg) {
+  const projectRoot = resolve(dirArg || process.cwd());
+  const scopes = [
+    join(homedir(), ".claude", "settings.json"),
+    join(projectRoot, ".claude", "settings.json"),
+    join(projectRoot, ".claude", "settings.local.json"),
+  ];
+  const seen = new Set([resolve(justWrote)]);
+  for (const file of scopes) {
+    const abs = resolve(file);
+    if (seen.has(abs)) continue;
+    seen.add(abs);
+    if (!existsSync(abs)) continue;
+    const s = readJSON(abs, null);
+    const entries = s?.hooks?.PreToolUse || [];
+    const hasHook = entries.some(
+      (entry) =>
+        entry?.matcher === "ExitPlanMode" &&
+        (entry.hooks || []).some((h) => isPlanReviewHook(h?.command, "hook")),
+    );
+    if (hasHook) {
+      console.log(
+        `\n⚠ WARNING: plan review hook also configured in ${abs} — multiple entries open the review multiple times.\n` +
+          `  Remove the ExitPlanMode plan-review hook from one of the scopes.`,
+      );
+    }
+  }
+}
+
 function cmdInit(args) {
   const global = args.includes("--global");
   const local = args.includes("--local");
@@ -183,7 +242,7 @@ function cmdInit(args) {
   const already = settings.hooks.PreToolUse.some(
     (entry) =>
       entry?.matcher === "ExitPlanMode" &&
-      (entry.hooks || []).some((h) => h?.command?.includes("hook.js") || h?.command === command),
+      (entry.hooks || []).some((h) => isPlanReviewHook(h?.command, "hook")),
   );
 
   if (already) {
@@ -197,13 +256,30 @@ function cmdInit(args) {
     console.log(`✓ Wrote ExitPlanMode plan-review hook to ${settingsFile}`);
   }
 
+  // EnterPlanMode context-injection hook: nudges Claude toward the multi-doc
+  // tree format as it starts planning. Never makes a permission decision.
+  const planContextCmd = planContextCommand(args);
+  const pcAlready = settings.hooks.PreToolUse.some(
+    (entry) =>
+      entry?.matcher === "EnterPlanMode" &&
+      (entry.hooks || []).some((h) => isPlanReviewHook(h?.command, "plan-context")),
+  );
+  if (pcAlready) {
+    console.log(`✓ EnterPlanMode plan-context hook already present in ${settingsFile}`);
+  } else {
+    settings.hooks.PreToolUse.push({
+      matcher: "EnterPlanMode",
+      hooks: [{ type: "command", command: planContextCmd, timeout: 10 }],
+    });
+    writeFileSync(settingsFile, JSON.stringify(settings, null, 2) + "\n");
+    console.log(`✓ Wrote EnterPlanMode plan-context hook to ${settingsFile}`);
+  }
+
   // Stop-hook gate: blocks the turn from ending while a tools-first (mcp/api)
   // review is still pending. Matcher-less (Stop has no tool matcher).
   const stopCommand = stopGateCommand(args);
   const stopAlready = settings.hooks.Stop.some((entry) =>
-    (entry.hooks || []).some(
-      (h) => h?.command?.includes("stop-gate") || h?.command === stopCommand,
-    ),
+    (entry.hooks || []).some((h) => isPlanReviewHook(h?.command, "stop-gate")),
   );
   if (stopAlready) {
     console.log(`✓ Stop plan-review gate already present in ${settingsFile}`);
@@ -215,8 +291,13 @@ function cmdInit(args) {
     console.log(`✓ Wrote Stop plan-review gate to ${settingsFile}`);
   }
 
+  // Cross-scope warning: multiple ExitPlanMode plan-review hooks (across global /
+  // project / project-local settings) each fire for one plan-mode exit and open
+  // the review that many times. Scan the OTHER known scopes and warn.
+  warnOtherScopes(settingsFile, global, dirArg);
+
   console.log(
-    `\nRuntime: ${chooseRuntime(args)}\nHook:    ${command}\nStop:    ${stopCommand}`,
+    `\nRuntime: ${chooseRuntime(args)}\nHook:    ${command}\nPlanCtx: ${planContextCmd}\nStop:    ${stopCommand}`,
   );
 
   // Skill: auto-triggers the multi-document plan authoring in every project.
@@ -311,9 +392,9 @@ function usage() {
 Usage:
   claude-plan-review init [dir] [--global] [--local] [--published] [--runtime bun|node]
                                   [--no-skill] [--write-claude-md]
-                                  Wire the ExitPlanMode hook + the Stop-hook gate into a project
-                                  (or all projects), install the plan-review-multidoc skill, and
-                                  register the MCP server.
+                                  Wire the ExitPlanMode hook + the EnterPlanMode context hook +
+                                  the Stop-hook gate into a project (or all projects), install the
+                                  plan-review-multidoc skill, and register the MCP server.
                                   Runtime auto-detects (Bun if installed, else Node).
                                   --global         → ~/.claude/settings.json (applies to ALL projects)
                                   --local          → .claude/settings.local.json
@@ -326,7 +407,8 @@ Usage:
   claude-plan-review channels     Show storage-channel readiness (e.g. gh / gist)
   claude-plan-review skill        (Re)install the plan-review-multidoc skill into ~/.claude/skills
   claude-plan-review mcp          (internal) run the stdio MCP server (plan_review_* tools)
-  claude-plan-review hook         (internal) the PreToolUse hook entry
+  claude-plan-review hook         (internal) the PreToolUse hook entry (ExitPlanMode → review)
+  claude-plan-review plan-context (internal) the PreToolUse hook entry (EnterPlanMode → multi-doc guidance)
   claude-plan-review stop-gate    (internal) the Stop hook entry (blocks on a pending tools-first review)
 `);
 }
@@ -358,6 +440,9 @@ switch (sub) {
     break;
   case "stop-gate":
     await import("./stop-gate.js");
+    break;
+  case "plan-context":
+    await import("./plan-context.js");
     break;
   default:
     usage();

@@ -803,28 +803,32 @@ async function doSave() {
 }
 
 // ---------- deletion ----------
-function showDeleteModal(title, desc) {
-  $("deleteTitle").textContent = title;
-  $("deleteDesc").textContent = desc;
-  $("deletePending").hidden = true;
-  $("deletePending").textContent = "";
-  $("deleteForce").hidden = true;
-  $("deleteConfirm").hidden = false;
-  $("deleteConfirm").disabled = false;
+// Deletes happen IMMEDIATELY on click — no confirmation modal. The modal appears
+// ONLY when a delete is blocked by a pending review (409 for single/project, or a
+// non-empty `blocked` array for bulk): it shows the blocked info + a Force option.
+function deleteTitleFor(pd) {
+  if (pd.type === "version") return `Couldn't delete v${pd.n}`;
+  if (pd.type === "project") return `Couldn't delete “${projNameByKey(pd.key)}”`;
+  return "Couldn't delete every selected version";
+}
+
+// Open the blocked/Force modal (the only remaining modal interaction).
+function openBlockedModal(pd) {
+  $("deleteTitle").textContent = deleteTitleFor(pd);
+  $("deleteDesc").textContent = "";
+  $("deleteForce").hidden = false;
   $("deleteForce").disabled = false;
   $("deleteModal").hidden = false;
 }
 
-function openDeleteVersion() {
+function deleteVersionNow() {
   if (!state.version) return;
   state.pendingDelete = { type: "version", key: state.key, n: state.version };
-  showDeleteModal(
-    `Delete v${state.version}?`,
-    `This permanently removes v${state.version} of “${projectName()}” and its comments. This can't be undone.`,
-  );
+  performDelete(false);
 }
 
 function showDeleteBlocked(e) {
+  openBlockedModal(state.pendingDelete);
   const revs = e.pendingReviews || [];
   const info = $("deletePending");
   info.hidden = false;
@@ -832,14 +836,13 @@ function showDeleteBlocked(e) {
   info.textContent =
     `Blocked: ${revs.length || "a"} pending review${many ? "s" : ""} still awaiting a decision. ` +
     `Force will auto-reject ${many ? "them" : "it"} (Claude is told the plan was deleted and to re-present or ask how to proceed), then delete.`;
-  $("deleteForce").hidden = false;
-  $("deleteConfirm").hidden = true;
 }
 
 // bulk-delete is always 200 with partial-success {deleted,blocked,meta}; render
 // the blocked versions (+ their pending reviews) and offer a Force retry for
 // just those. Single-version / project DELETE stay 409-on-block (showDeleteBlocked).
 function showBulkBlocked(blocked, deleted) {
+  openBlockedModal(state.pendingDelete);
   const info = $("deletePending");
   info.hidden = false;
   const ns = blocked.map((b) => b.n);
@@ -850,9 +853,6 @@ function showBulkBlocked(blocked, deleted) {
     `${delMsg}Blocked: v${ns.join(", v")} — ${totalPending || "a"} pending review${many ? "s" : ""} ` +
     `still awaiting a decision. Force will auto-reject ${many ? "them" : "it"} (Claude is told the plan ` +
     `was deleted and to re-present or ask how to proceed) and delete the remaining ${ns.length} version${ns.length === 1 ? "" : "s"}.`;
-  $("deleteForce").hidden = false;
-  $("deleteForce").disabled = false;
-  $("deleteConfirm").hidden = true;
 }
 
 async function finishDelete(pd, msg) {
@@ -864,12 +864,10 @@ async function finishDelete(pd, msg) {
   if (wasManage && !$("manageModal").hidden) await renderManage();
 }
 
-async function confirmDelete(force) {
+async function performDelete(force) {
   const pd = state.pendingDelete;
   if (!pd) return;
-  const bconfirm = $("deleteConfirm");
   const bforce = $("deleteForce");
-  bconfirm.disabled = true;
   bforce.disabled = true;
   const f = force ? "true" : "";
   try {
@@ -903,7 +901,6 @@ async function confirmDelete(force) {
     if (e.status === 409) showDeleteBlocked(e); // version / project block
     else {
       toast("Delete failed: " + e.message);
-      bconfirm.disabled = false;
       bforce.disabled = false;
     }
   }
@@ -1109,8 +1106,8 @@ function wireUI() {
     await resolve("reject");
   };
 
-  // deletion + manage
-  $("deleteVerBtn").onclick = () => openDeleteVersion();
+  // deletion + manage — delete fires immediately; the modal is blocked-only
+  $("deleteVerBtn").onclick = () => deleteVersionNow();
   $("deleteCancel").onclick = async () => {
     const pd = state.pendingDelete;
     $("deleteModal").hidden = true;
@@ -1121,8 +1118,7 @@ function wireUI() {
       if (!$("manageModal").hidden) await renderManage();
     }
   };
-  $("deleteConfirm").onclick = () => confirmDelete(false);
-  $("deleteForce").onclick = () => confirmDelete(true);
+  $("deleteForce").onclick = () => performDelete(true);
 
   $("manageBtn").onclick = () => openManageModal();
   $("manageClose").onclick = () => ($("manageModal").hidden = true);
@@ -1132,10 +1128,7 @@ function wireUI() {
     const key = btn.dataset.key;
     if (btn.dataset.mg === "delproj") {
       state.pendingDelete = { type: "project", key, fromManage: true };
-      showDeleteModal(
-        `Delete project “${projNameByKey(key)}”?`,
-        `Permanently removes the project and all its versions, comments and reviews. This can't be undone.`,
-      );
+      performDelete(false);
     } else if (btn.dataset.mg === "delsel") {
       const ns = [...$("manageList").querySelectorAll('input[type="checkbox"]:checked')]
         .filter((x) => x.dataset.key === key)
@@ -1145,10 +1138,7 @@ function wireUI() {
         return;
       }
       state.pendingDelete = { type: "bulk", key, ns, fromManage: true };
-      showDeleteModal(
-        `Delete ${ns.length} version${ns.length === 1 ? "" : "s"} of “${projNameByKey(key)}”?`,
-        `Permanently removes v${ns.join(", v")} and their comments. This can't be undone.`,
-      );
+      performDelete(false);
     }
   });
 }

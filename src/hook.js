@@ -156,13 +156,18 @@ async function main() {
   } catch {
     process.exit(0); // store failure → don't interfere
   }
-  const { key, version, reviewId } = recorded;
+  const { key, version, reviewId, reused } = recorded;
 
   const port = await ensureServer();
   const reviewUrl = `http://localhost:${port}/?project=${encodeURIComponent(
     key,
   )}&version=${version}&review=${reviewId}&doc=root`;
-  openBrowser(reviewUrl);
+  // When a duplicate hook invocation (a second entry in another settings scope)
+  // fired for the SAME ExitPlanMode call, recordPlan reports `reused` — the first
+  // invocation already opened the browser, so we must NOT open it again. We still
+  // ensure the server is up and poll the shared review, so both processes return
+  // the same decision. (Fail-open invariant preserved.)
+  if (!reused) openBrowser(reviewUrl);
 
   // block until the UI resolves the review (or we time out)
   const deadline = Date.now() + TIMEOUT_MS;

@@ -1,9 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import {
+  closeSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   writeFileSync,
+  writeSync,
   existsSync,
   rmSync,
 } from "node:fs";
@@ -48,6 +51,28 @@ const versionMd = (key, n) => join(projectDir(key), "versions", `${pad(n)}.md`);
 const versionMeta = (key, n) => join(projectDir(key), "versions", `${pad(n)}.json`);
 const commentsPath = (key, n) => join(projectDir(key), "comments", `${pad(n)}.json`);
 const reviewPath = (id) => join(REVIEWS_DIR, `${id}.json`);
+
+// ---------- double-fire dedup (one ExitPlanMode call → one review) ----------
+// Two hook entries in different settings scopes can both fire for the SAME
+// ExitPlanMode tool call; they arrive with an identical tool_use_id. We serialize
+// them with an exclusive-create marker file keyed by tool_use_id: the first
+// process to create the marker "wins" and records the review, writing its id back
+// into the marker; concurrent losers read that id and reuse the review instead of
+// creating a duplicate. The marker uses a NON-.json extension so it's invisible to
+// listReviews() (which globs *.json). Fail-open: any error skips dedup.
+const toolUseMarkerPath = (id) =>
+  join(REVIEWS_DIR, `tooluse-${String(id).replace(/[^a-zA-Z0-9_-]/g, "_")}.lock`);
+
+/** Synchronous sleep (recordPlan is sync, called from the blocking hook). */
+function sleepSync(ms) {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    // SharedArrayBuffer unavailable → best-effort busy wait
+    const end = Date.now() + ms;
+    while (Date.now() < end) {}
+  }
+}
 
 // ---------- projects / versions ----------
 export function getProjectMeta(key) {
@@ -104,6 +129,31 @@ function writeTree(key, version, tree) {
 export function recordPlan(opts) {
   const key = projectKey(opts.cwd);
   ensureDirs(key);
+
+  // Double-fire dedup: if another invocation with the same tool_use_id is already
+  // in flight (or done), reuse its review rather than creating a second one.
+  let markerFd = null;
+  const markerFile = opts.toolUseId ? toolUseMarkerPath(opts.toolUseId) : null;
+  if (markerFile) {
+    try {
+      markerFd = openSync(markerFile, "wx"); // atomic exclusive create — we won the race
+    } catch (e) {
+      if (e && e.code === "EEXIST") {
+        // Someone else is recording (or has recorded) this tool call. Wait for
+        // them to publish the reviewId, then reuse it.
+        for (let i = 0; i < 120; i++) {
+          const m = readJSON(markerFile, null);
+          if (m && m.reviewId && existsSync(reviewPath(m.reviewId))) {
+            return { key, version: m.version, reviewId: m.reviewId, reused: true };
+          }
+          sleepSync(50);
+        }
+        // Winner never published (crashed mid-write) → fall through and record our own.
+      }
+      // Any other error → skip dedup, record normally.
+    }
+  }
+
   const tree =
     opts.tree ?? { kind: "single", markdown: opts.plan != null ? opts.plan : "" };
   const hash = hashTree(tree);
@@ -166,7 +216,19 @@ export function recordPlan(opts) {
       createdAt: now(),
     }),
   );
-  return { key, version, reviewId };
+
+  // Publish the reviewId into the marker so any concurrent duplicate invocation
+  // reuses it instead of creating a second review.
+  if (markerFd !== null) {
+    try {
+      writeSync(markerFd, JSON.stringify({ toolUseId: opts.toolUseId, key, version, reviewId }));
+    } catch {}
+    try {
+      closeSync(markerFd);
+    } catch {}
+  }
+
+  return { key, version, reviewId, reused: false };
 }
 
 export function listProjects() {

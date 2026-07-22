@@ -41,6 +41,10 @@ Rules:
 - Marker lines inside fenced code blocks (```` ``` ````/`~~~`) are ignored — you can
   show marker examples in code fences safely.
 
+> An `EnterPlanMode` PreToolUse hook (installed by `init`) injects a short reminder of
+> this marker format as you start planning — it only adds context and never affects
+> your consent to enter plan mode. This skill is the full reference behind that nudge.
+
 ## Path A — in plan mode (preferred when you're already planning)
 
 Put the **whole tree in the single ExitPlanMode plan string**, using the markers
