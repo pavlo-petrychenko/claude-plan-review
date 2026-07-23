@@ -35,7 +35,7 @@ const state = {
   docCache: new Map(), // slug → {slug,title,parent,markdown,html}
   manifestCache: new Map(), // version n → manifest|null (for the diff doc union)
   allComments: [], // every comment on the version (each carries `doc`) — drives badges
-  viewAsTree: false, // single-doc display-only outline mode
+  viewAsTree: true, // single-doc display-only outline mode (always on for single-doc plans)
   treeSection: -1, // selected outline section index (-1 = show all)
   _sections: null, // cached outline sections for the current preview
   // --- deletion ---
@@ -89,8 +89,6 @@ function showEmpty(msg) {
   $("docSidebar").hidden = true;
   $("reviewActions").hidden = true;
   $("saveActions").hidden = true;
-  $("deleteVerBtn").hidden = true;
-  $("treeToggle").hidden = true;
 }
 
 async function loadProjects() {
@@ -123,7 +121,6 @@ async function selectProject(key, wantV) {
   const fmt = (v) => `v${v.n} · ${new Date(v.createdAt).toLocaleString()}${v.n === latest ? " (current)" : ""}`;
   $("versionSel").innerHTML = versions.map((v) => `<option value="${v.n}">${esc(fmt(v))}</option>`).join("");
   $("versionSel").value = String(state.version);
-  $("deleteVerBtn").hidden = false;
 
   // base = the version right before current, if any
   state.baseVersion = versions.length > 1 ? versions[versions.findIndex((v) => v.n === state.version) - 1]?.n ?? versions[0].n : null;
@@ -139,7 +136,6 @@ async function selectProject(key, wantV) {
 async function loadVersion(n) {
   state.version = n;
   hideSelPop();
-  state.viewAsTree = false;
   state.treeSection = -1;
   state.docCache = new Map();
   state.data = await api(`/api/projects/${enc(state.key)}/versions/${n}`);
@@ -149,7 +145,9 @@ async function loadVersion(n) {
   const isTree = docs.length > 1;
   state.kind = state.data.kind || (isTree ? "tree" : "single");
   $("diffCur").textContent = n;
-  updateTreeToggle();
+  // Tree view is always on for single-doc plans (heading outline); real multi-doc
+  // trees use the doc sidebar instead, so they don't also apply the outline view.
+  state.viewAsTree = !isTree;
 
   if (isTree) {
     // sidebar badge counts come from one unscoped fetch; threads filter it per doc.
@@ -429,15 +427,6 @@ function renderHeadingTree() {
     );
   });
   return rows.join("");
-}
-
-function updateTreeToggle() {
-  const isTree = state.manifest && state.manifest.docs.length > 1;
-  const t = $("treeToggle");
-  t.hidden = isTree; // real doc trees get the sidebar automatically
-  if (isTree) state.viewAsTree = false;
-  t.classList.toggle("active", state.viewAsTree);
-  t.textContent = state.viewAsTree ? "Exit tree view" : "View as tree";
 }
 
 // ---------- comments ----------
@@ -1025,15 +1014,6 @@ function wireUI() {
     };
   });
 
-  // view-as-tree (single-doc, display-only)
-  $("treeToggle").onclick = () => {
-    state.viewAsTree = !state.viewAsTree;
-    state.treeSection = -1;
-    updateTreeToggle();
-    renderPreview();
-    renderSidebar();
-  };
-
   // sidebar navigation — doc rows (tree) or outline sections (view-as-tree)
   $("docSidebar").addEventListener("click", (e) => {
     const row = e.target.closest("[data-doc]");
@@ -1106,8 +1086,8 @@ function wireUI() {
     await resolve("reject");
   };
 
-  // deletion + manage — delete fires immediately; the modal is blocked-only
-  $("deleteVerBtn").onclick = () => deleteVersionNow();
+  // deletion + manage — header entry points are hidden for now, but the underlying
+  // logic (deleteVersionNow / openManageModal / performDelete) is kept intact.
   $("deleteCancel").onclick = async () => {
     const pd = state.pendingDelete;
     $("deleteModal").hidden = true;
@@ -1120,7 +1100,6 @@ function wireUI() {
   };
   $("deleteForce").onclick = () => performDelete(true);
 
-  $("manageBtn").onclick = () => openManageModal();
   $("manageClose").onclick = () => ($("manageModal").hidden = true);
   $("manageList").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-mg]");
