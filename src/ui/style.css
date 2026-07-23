@@ -200,9 +200,6 @@ textarea {
 /* ---------- multi-document: sidebar + layout ---------- */
 .preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 10px; }
 .preview-toolbar .selhint { margin: 0; }
-.tree-toggle { font-size: 12px; padding: 4px 10px; flex: none; }
-.tree-toggle.active { background: var(--accent); border-color: var(--accent); color: #fff; }
-.tree-toggle.active:hover { filter: brightness(1.08); }
 
 .preview-layout { display: flex; align-items: flex-start; gap: 20px; }
 .preview-main { flex: 1; min-width: 0; }

@@ -25,12 +25,13 @@ import { getReview, recordPlan } from "./store.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SERVER_SCRIPT = join(HERE, "server.js");
+const pkg = JSON.parse(readFileSync(join(HERE, "..", "package.json"), "utf8"));
 
 // Latest MCP protocol revision we implement. We echo the client's requested
 // version back when it sends one (the compatible behaviour for a version-
 // agnostic tools server), else advertise this.
 const PROTOCOL_VERSION = "2025-06-18";
-const SERVER_INFO = { name: "claude-plan-review", version: "0.4.0" };
+const SERVER_INFO = { name: "claude-plan-review", version: pkg.version };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
